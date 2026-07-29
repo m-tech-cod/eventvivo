@@ -43,7 +43,7 @@ const steps = [
 
 export function HowItWorks() {
   return (
-    <AnimatedSection id="how-it-works" className="py-20 px-4 bg-white scroll-mt-16">
+    <AnimatedSection className="py-20 px-4 bg-white scroll-mt-16">
       <div className="container mx-auto max-w-6xl">
         {/* Header */}
         <div className="text-center mb-16">

@@ -11,7 +11,7 @@ interface BackgroundImageProps {
   overlayOpacity?: number
   className?: string
   position?: 'center' | 'top' | 'bottom'
-  animate?: 'none' | 'zoom' | 'parallax' // ✅ Nouvelle prop
+  animate?: 'none' | 'zoom' | 'parallax'
 }
 
 export function BackgroundImage({
@@ -21,7 +21,7 @@ export function BackgroundImage({
   overlayOpacity = 0.4,
   className = '',
   position = 'center',
-  animate = 'none', // ✅ Par défaut : pas d'animation
+  animate = 'none',
 }: BackgroundImageProps) {
   const positionClass = {
     center: 'object-center',
@@ -29,7 +29,7 @@ export function BackgroundImage({
     bottom: 'object-bottom',
   }
 
-  // ✅ Configuration des animations
+  // ✅ Configuration des animations avec le bon type
   const getAnimationProps = () => {
     switch (animate) {
       case 'zoom':
@@ -39,7 +39,7 @@ export function BackgroundImage({
             duration: 10,
             repeat: Infinity,
             repeatType: 'reverse' as const,
-            ease: 'easeInOut',
+            ease: 'easeInOut' as const,
           },
         }
       case 'parallax':
@@ -49,7 +49,7 @@ export function BackgroundImage({
             duration: 8,
             repeat: Infinity,
             repeatType: 'reverse' as const,
-            ease: 'easeInOut',
+            ease: 'easeInOut' as const,
           },
         }
       default:
@@ -57,13 +57,12 @@ export function BackgroundImage({
     }
   }
 
+  const animationProps = getAnimationProps()
+
   return (
     <div className={`relative w-full overflow-hidden ${className}`}>
-      {/* ✅ Image avec animation */}
-      <motion.div
-        className="absolute inset-0"
-        animate={getAnimationProps()}
-      >
+      {/* ✅ Image avec animation conditionnelle */}
+      {animate === 'none' ? (
         <Image
           src={src}
           alt={alt}
@@ -72,7 +71,21 @@ export function BackgroundImage({
           priority
           quality={90}
         />
-      </motion.div>
+      ) : (
+        <motion.div
+          className="absolute inset-0"
+          animate={animationProps}
+        >
+          <Image
+            src={src}
+            alt={alt}
+            fill
+            className={`object-cover ${positionClass[position]}`}
+            priority
+            quality={90}
+          />
+        </motion.div>
+      )}
 
       {/* Overlay */}
       <div
