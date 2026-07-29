@@ -70,7 +70,7 @@ export default function PDFPage() {
 
   if (!event) {
     return (
-      <BackgroundImage src="/images/foule.webp" animate="zoom" overlayOpacity={0.35}>
+      <BackgroundImage src="/images/global-bg.jpg" overlayOpacity={0.5}>
         <div className="flex-1 flex items-center justify-center px-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -99,7 +99,7 @@ export default function PDFPage() {
   }
 
   return (
-    <BackgroundImage src="/images/global-bg.jpg" overlayOpacity={0.35} animate="zoom">
+    <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35} animate="zoom">
       <div className="flex-1 py-8 px-4 overflow-y-auto">
         <div className="container mx-auto max-w-2xl">
           <motion.div
