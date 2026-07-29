@@ -1,13 +1,27 @@
 // lib/rate-limit.ts
-import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
+const requestCounts = new Map<string, { count: number; resetTime: number }>()
 
-// Créer un client Redis (gratuit avec Upstash)
-const redis = Redis.fromEnv()
+const windowMs = 60 * 1000 // 1 minute
+const maxRequests = 5 // 5 requêtes par minute
 
-// Limite : 5 requêtes par minute par IP
-export const rateLimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(5, '1 m'),
-  analytics: true, // Active les stats
-})
+export const rateLimit = {
+  limit: async (ip: string) => {
+    const now = Date.now()
+    const record = requestCounts.get(ip)
+
+    // Si pas de record ou expiré, créer un nouveau
+    if (!record || now > record.resetTime) {
+      requestCounts.set(ip, { count: 1, resetTime: now + windowMs })
+      return { success: true }
+    }
+
+    // Incrémenter le compteur
+    if (record.count < maxRequests) {
+      record.count++
+      return { success: true }
+    }
+
+    // Trop de requêtes
+    return { success: false }
+  }
+}
