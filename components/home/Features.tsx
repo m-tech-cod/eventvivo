@@ -116,7 +116,8 @@ export function Features() {
               <h3 className="font-bold text-[#1E3A8A] text-base mb-2 leading-snug">
                 {feature.title}
               </h3>
-              <p className="text-gray-500 text-sm leading-relaxed">
+              {/* ✅ Ajout de suppressHydrationWarning */}
+              <p className="text-gray-500 text-sm leading-relaxed" suppressHydrationWarning>
                 {feature.description}
               </p>
 
