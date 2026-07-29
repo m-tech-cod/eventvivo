@@ -1,0 +1,58 @@
+import * as React from "react"
+import { cn } from "@/lib/utils"
+
+export function Dialog({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex items-center justify-center bg-black/50",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export function DialogContent({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+}
+
+export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)}
+      {...props}
+    />
+  )
+}
+
+export function DialogTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
+  return (
+    <h2
+      className={cn(
+        "text-lg font-semibold leading-none tracking-tight",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export function DialogDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
+  return (
+    <p
+      className={cn("text-sm text-gray-500", className)}
+      {...props}
+    />
+  )
+}

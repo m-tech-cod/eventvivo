@@ -1,0 +1,7 @@
+export { HeroCarousel } from './HeroCarousel'
+export { Features } from './Features'
+export { HowItWorks } from './HowItWorks'
+export { PricingSection } from './PricingSection'
+export { Testimonials } from './Testimonials'
+export { FAQSection } from './FAQSection'
+export { FinalCTA } from './FinalCTA'
