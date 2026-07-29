@@ -1,9 +1,18 @@
 import { MetadataRoute } from 'next'
+import { createServerClient } from '@/lib/supabase/server'
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = 'https://eventvivo.com'
-  
-  return [
+  const supabase = await createServerClient()
+
+  // ✅ Récupérer les événements publics pour le sitemap
+  const { data: events } = await supabase
+    .from('events')
+    .select('slug, updated_at')
+    .eq('status', 'active')
+    .limit(1000)
+
+  const staticPages: MetadataRoute.Sitemap = [
     {
       url: baseUrl,
       lastModified: new Date(),
@@ -53,4 +62,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.3,
     },
   ]
+
+  // ✅ Ajouter les pages dynamiques des événements
+  const eventPages: MetadataRoute.Sitemap = (events || []).map((event) => ({
+    url: `${baseUrl}/fr/invite/${event.slug}`,
+    lastModified: new Date(event.updated_at),
+    changeFrequency: 'weekly',
+    priority: 0.7,
+  }))
+
+  return [...staticPages, ...eventPages]
 }
