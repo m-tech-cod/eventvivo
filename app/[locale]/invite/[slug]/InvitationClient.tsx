@@ -116,16 +116,38 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
         setInvitationId(invitationIdLocal)
       }
       
-      const { error: rsvpError } = await supabase
+      // ✅ Vérifier si un RSVP existe déjà pour cette invitation
+      const { data: existingRsvp } = await supabase
         .from('rsvps')
-        .upsert({
-          invitation_id: invitationIdLocal,
-          status: status,
-          number_of_guests: status === 'attending' ? guests : 0,
-          responded_at: new Date().toISOString()
-        })
-      
-      if (rsvpError) throw rsvpError
+        .select('id')
+        .eq('invitation_id', invitationIdLocal)
+        .maybeSingle()
+
+      if (existingRsvp) {
+        // Mettre à jour le RSVP existant
+        const { error: updateError } = await supabase
+          .from('rsvps')
+          .update({
+            status: status,
+            number_of_guests: status === 'attending' ? guests : 0,
+            responded_at: new Date().toISOString()
+          })
+          .eq('id', existingRsvp.id)
+
+        if (updateError) throw updateError
+      } else {
+        // Créer un nouveau RSVP
+        const { error: rsvpError } = await supabase
+          .from('rsvps')
+          .insert({
+            invitation_id: invitationIdLocal,
+            status: status,
+            number_of_guests: status === 'attending' ? guests : 0,
+            responded_at: new Date().toISOString()
+          })
+        
+        if (rsvpError) throw rsvpError
+      }
       
       await supabase
         .from('invitations')
@@ -224,9 +246,9 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
               {event.type === 'autre' && '📌 Événement'}
               {event.type === 'picnic' && '🧺 Picnic'}
               {event.type === 'ago' && '🥁 Agô'}
-              {event.type === 'Formation' && '📚 Formation'}
-              {event.type === 'Lancement de produit' && '🚀 Lancement de produit'}
-              {event.type === 'Conférence' && '🎤 Conférence'}  
+              {event.type === 'formation' && '📚 Formation'}
+              {event.type === 'lancement' && '🚀 Lancement de produit'}
+              {event.type === 'conference' && '🎤 Conférence'}  
             </div>
             <h1 className="text-3xl md:text-4xl font-bold text-white font-poppins mb-3 drop-shadow-lg">
               {event.name}

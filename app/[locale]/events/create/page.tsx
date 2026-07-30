@@ -144,6 +144,7 @@ export default function CreateEventPage() {
         setUploading(false)
       }
 
+      // 1️⃣ Créer l'événement
       const { data, error } = await supabase
         .from('events')
         .insert({
@@ -176,6 +177,23 @@ export default function CreateEventPage() {
         return
       }
 
+      // 2️⃣ Créer l'invitation générique
+      if (data) {
+        const { error: invError } = await supabase
+          .from('invitations')
+          .insert({
+            event_id: data.id,
+            recipient_name: 'Invité',
+            unique_link: `inv-${data.slug}`,
+            status: 'sent',
+          })
+
+        if (invError) {
+          console.error('❌ Erreur création invitation:', invError)
+        }
+      }
+
+      // 3️⃣ Rediriger vers le dashboard
       router.push(`/fr/dashboard`)
 
     } catch (err: any) {
