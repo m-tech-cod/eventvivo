@@ -54,12 +54,15 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 
 // ✅ Composant serveur avec BackgroundImage
 export default async function InvitationPage({ params }: { params: { slug: string } }) {
+  console.log('🔥 [PAGE SERVEUR] Slug reçu:', params.slug)
   const supabase = createClient()
   const { data: event } = await supabase
     .from('events')
     .select('*')
     .eq('slug', params.slug)
     .single()
+
+    console.log('🔥 [PAGE SERVEUR] Événement trouvé ?', !!event)
 
   // Si l'événement n'existe pas, on affiche une erreur
   if (!event) {
