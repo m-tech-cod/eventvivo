@@ -11,7 +11,7 @@ const paymentSchema = z.object({
   amount: z.number().positive().min(0.01),
   currency: z.string(),
   payment_method: z.string(),
-  promo_code: z.string().optional().nullable(),
+  promo_code: z.string().optional().nullable(), 
   ambassador_id: z.string().optional().nullable(),
   plan_type: z.string().optional(),
 })
@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
   
   const body = await request.json()
   console.error('📦 Payload reçu:', JSON.stringify(body, null, 2))
+
+  console.error('📦 Type de plan_type:', typeof body.plan_type)
+  console.error('📦 Valeur de plan_type:', body.plan_type)
   
   // ✅ Validation des données entrantes
   const validation = paymentSchema.safeParse(body)
