@@ -5,13 +5,13 @@ import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
-// ✅ Schéma de validation Zod (accepte tout)
+// ✅ Schéma de validation Zod
 const paymentSchema = z.object({
   event_id: z.string().optional(),
   amount: z.number().positive().min(0.01),
   currency: z.string(),
   payment_method: z.string(),
-  promo_code: z.string().optional().nullable(), 
+  promo_code: z.string().optional().nullable(),
   ambassador_id: z.string().optional().nullable(),
   plan_type: z.string().optional(),
 })
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   // ✅ Rate Limiting
   const ip = request.headers.get('x-forwarded-for') || 'unknown'
   const { success } = await rateLimit.limit(ip)
-  
+
   if (!success) {
     return NextResponse.json(
       { error: 'Trop de tentatives, réessaye dans 1 minute' },
@@ -30,18 +30,15 @@ export async function POST(request: NextRequest) {
 
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  
+
   if (!user) {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
   }
-  
+
   const body = await request.json()
   console.error('📦 Payload reçu:', JSON.stringify(body, null, 2))
 
-  console.error('📦 Type de plan_type:', typeof body.plan_type)
-  console.error('📦 Valeur de plan_type:', body.plan_type)
-  
-  // ✅ Validation des données entrantes
+  // ✅ Validation
   const validation = paymentSchema.safeParse(body)
   if (!validation.success) {
     console.error('❌ Erreur validation:', validation.error.issues)
@@ -52,7 +49,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { event_id, amount, currency, payment_method, promo_code, ambassador_id, plan_type } = validation.data
-  
+
   try {
     let finalAmount = amount
     let finalPromoCode = promo_code || null
@@ -60,7 +57,7 @@ export async function POST(request: NextRequest) {
     let discountApplied = false
     let discountPercent = 0
 
-    // ✅ Vérification du code promo
+    // ✅ Code promo
     if (promo_code) {
       const { data: ambassador, error: ambassadorError } = await supabase
         .from('ambassadors')
@@ -119,56 +116,73 @@ export async function POST(request: NextRequest) {
     const timeoutId = setTimeout(() => controller.abort(), 10000)
 
     try {
-      // ✅ Vérifier que la clé API existe
-      if (!process.env.FEDAPAY_API_KEY) {
+      // ✅ Vérifier la clé API
+      const apiKey = process.env.FEDAPAY_API_KEY
+      if (!apiKey) {
         console.error('❌ FEDAPAY_API_KEY non définie')
         throw new Error('Configuration de paiement manquante')
       }
 
+      // ✅ Utiliser une URL de callback valide
+      const callbackUrl = process.env.NEXT_PUBLIC_APP_URL
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/webhook/fedapay`
+        : 'https://eventvivo.com/api/payments/webhook/fedapay'
+
+      const requestBody = {
+        amount: Math.round(finalAmount * 100),
+        currency: currency,
+        description: `Paiement ${plan_type || 'standard'} - ${event_id || 'nouvel_utilisateur'}`,
+        payment_method: payment_method,
+        callback_url: callbackUrl,
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://eventvivo.com'}/fr/dashboard`,
+        metadata: {
+          event_id: event_id || 'pending',
+          user_id: user.id,
+          promo_code: finalPromoCode,
+          ambassador_id: finalAmbassadorId,
+          plan_type: plan_type || 'standard',
+        },
+      }
+
+      console.error('📦 Requête FedaPay:', JSON.stringify(requestBody, null, 2))
+
       const response = await fetch('https://api.fedapay.com/v1/transactions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.FEDAPAY_API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          amount: Math.round(finalAmount * 100),
-          currency: currency,
-          description: `Premium - ${event_id || 'nouvel_utilisateur'}${discountApplied ? ` (réduction ${discountPercent}%)` : ''}`,
-          payment_method: payment_method,
-          callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/webhook/fedapay`,
-          return_url: `${process.env.NEXT_PUBLIC_APP_URL}/fr/dashboard`,
-          metadata: {
-            event_id: event_id,
-            user_id: user.id,
-            promo_code: finalPromoCode,
-            ambassador_id: finalAmbassadorId,
-            plan_type: plan_type,
-          },
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       })
 
       clearTimeout(timeoutId)
 
-      // ✅ Vérifier la réponse avant de parser
+      // ✅ Lire la réponse
       const responseText = await response.text()
       console.error('📦 Réponse brute de FedaPay:', responseText)
 
+      // ✅ Parser la réponse
       let data
       try {
         data = JSON.parse(responseText)
       } catch (parseError) {
         console.error('❌ Réponse non-JSON:', responseText)
-        throw new Error(`FedaPay a renvoyé une erreur: ${responseText}`)
+        return NextResponse.json(
+          { error: `FedaPay a renvoyé une erreur: ${responseText}` },
+          { status: 500 }
+        )
       }
 
       if (!response.ok) {
-        console.error('FedaPay error:', data)
-        throw new Error(data.message || 'Erreur FedaPay')
+        console.error('❌ Erreur FedaPay:', data)
+        return NextResponse.json(
+          { error: data.message || data.error || 'Erreur FedaPay' },
+          { status: response.status }
+        )
       }
 
-      // ✅ Sauvegarder la transaction en base
+      // ✅ Sauvegarder la transaction
       const { error: insertError } = await supabase
         .from('payments')
         .insert({
@@ -183,20 +197,20 @@ export async function POST(request: NextRequest) {
           status: 'pending',
           promo_code: finalPromoCode,
           ambassador_id: finalAmbassadorId,
-          plan_type: plan_type,
+          plan_type: plan_type || 'standard',
           provider_response: data,
         })
 
       if (insertError) {
-        console.error('Erreur insertion paiement:', insertError)
+        console.error('❌ Erreur insertion paiement:', insertError)
       }
-      
+
       return NextResponse.json({
         success: true,
         transaction_id: data.transaction.id,
         payment_url: data.transaction.payment_url,
       })
-      
+
     } catch (fetchError: any) {
       clearTimeout(timeoutId)
       if (fetchError.name === 'AbortError') {
@@ -205,13 +219,17 @@ export async function POST(request: NextRequest) {
           { status: 504 }
         )
       }
-      throw fetchError
+      console.error('❌ Erreur fetch:', fetchError)
+      return NextResponse.json(
+        { error: fetchError.message || 'Erreur de communication avec FedaPay' },
+        { status: 500 }
+      )
     }
-    
+
   } catch (error: any) {
-    console.error('Erreur FedaPay:', error)
+    console.error('❌ Erreur générale:', error)
     return NextResponse.json(
-      { error: error.message || 'Erreur FedaPay' },
+      { error: error.message || 'Erreur interne' },
       { status: 500 }
     )
   }
