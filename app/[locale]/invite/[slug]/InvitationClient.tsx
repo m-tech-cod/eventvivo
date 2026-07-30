@@ -40,12 +40,17 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true)
-      
+
+      console.log('🔍 Slug reçu:', slug)
+
       const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select('*')
         .eq('slug', slug)
         .single()
+
+        console.log('🔍 Event Data:', eventData)
+        console.log('🔍 Event Error:', eventError)
       
       if (eventError || !eventData) {
         setError('Événement non trouvé')
