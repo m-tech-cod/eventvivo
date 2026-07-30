@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       discountPercent = rate
       discountApplied = true
       finalAmount = amount * (1 - (rate / 100))
-      amount: Math.round(finalAmount),
+      finalAmount = Math.round(finalAmount)
       finalPromoCode = promo_code.toUpperCase()
       finalAmbassadorId = ambassador.id
     }
@@ -123,13 +123,8 @@ export async function POST(request: NextRequest) {
         throw new Error('Configuration de paiement manquante')
       }
 
-      // ✅ Utiliser une URL de callback valide
-      const callbackUrl = process.env.NEXT_PUBLIC_APP_URL
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/webhook/fedapay`
-        : 'https://eventvivo.com/api/payments/webhook/fedapay'
-
       const requestBody = {
-        amount: Math.round(finalAmount * 100),
+        amount: Math.round(finalAmount),
         currency: currency,
         description: `Paiement ${plan_type || 'standard'} - ${event_id || 'nouvel_utilisateur'}`,
         payment_method: payment_method,
@@ -143,6 +138,7 @@ export async function POST(request: NextRequest) {
           plan_type: plan_type || 'standard',
         },
       }
+
       console.error('📦 Requête FedaPay:', JSON.stringify(requestBody, null, 2))
       console.error('🔑 Clé API (début):', process.env.FEDAPAY_API_KEY?.slice(0, 15))
 
