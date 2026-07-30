@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       discountPercent = rate
       discountApplied = true
       finalAmount = amount * (1 - (rate / 100))
-      finalAmount = Math.round(finalAmount * 100) / 100
+      amount: Math.round(finalAmount),
       finalPromoCode = promo_code.toUpperCase()
       finalAmbassadorId = ambassador.id
     }
