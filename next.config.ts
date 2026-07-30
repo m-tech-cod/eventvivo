@@ -11,6 +11,10 @@ const nextConfig = {
     ],
     qualities: [75, 90], // ✅ Déplacé ici
   },
+  // ✅ FORCE LE VIDAGE DU CACHE À CHAQUE BUILD
+    generateBuildId: async () => {
+      return `build-${Date.now()}`
+  },
 }
 
 module.exports = nextConfig
