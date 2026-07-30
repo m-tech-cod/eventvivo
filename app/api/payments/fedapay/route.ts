@@ -8,12 +8,13 @@ export const dynamic = 'force-dynamic'
 
 // ✅ Schéma de validation Zod
 const paymentSchema = z.object({
-  event_id: z.string().uuid(),
+  event_id: z.string().uuid().or(z.literal('pending')),
   amount: z.number().positive().min(0.01),
   currency: z.enum(['XOF', 'EUR', 'USD']),
   payment_method: z.enum(['mobile_money', 'card', 'paypal']),
   promo_code: z.string().optional(),
   ambassador_id: z.string().uuid().optional(),
+  plan_type: z.string().optional(),
 })
 
 export async function POST(request: NextRequest) {
