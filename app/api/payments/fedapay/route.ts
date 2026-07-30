@@ -119,6 +119,12 @@ export async function POST(request: NextRequest) {
     const timeoutId = setTimeout(() => controller.abort(), 10000)
 
     try {
+      // ✅ Vérifier que la clé API existe
+      if (!process.env.FEDAPAY_API_KEY) {
+        console.error('❌ FEDAPAY_API_KEY non définie')
+        throw new Error('Configuration de paiement manquante')
+      }
+
       const response = await fetch('https://api.fedapay.com/v1/transactions', {
         method: 'POST',
         headers: {
@@ -142,10 +148,21 @@ export async function POST(request: NextRequest) {
         }),
         signal: controller.signal,
       })
-      
+
       clearTimeout(timeoutId)
-      const data = await response.json()
-      
+
+      // ✅ Vérifier la réponse avant de parser
+      const responseText = await response.text()
+      console.error('📦 Réponse brute de FedaPay:', responseText)
+
+      let data
+      try {
+        data = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error('❌ Réponse non-JSON:', responseText)
+        throw new Error(`FedaPay a renvoyé une erreur: ${responseText}`)
+      }
+
       if (!response.ok) {
         console.error('FedaPay error:', data)
         throw new Error(data.message || 'Erreur FedaPay')
