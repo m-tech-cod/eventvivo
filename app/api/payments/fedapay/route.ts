@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
-import { generateTransactionId } from '@/lib/utils/payment'
 import { rateLimit } from '@/lib/rate-limit'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
 
-// ✅ Schéma de validation Zod
+// ✅ Schéma de validation Zod (accepte tout)
 const paymentSchema = z.object({
-  event_id: z.string().uuid().or(z.literal('pending')),
+  event_id: z.string().optional(),
   amount: z.number().positive().min(0.01),
-  currency: z.enum(['XOF', 'EUR', 'USD']),
-  payment_method: z.enum(['mobile_money', 'card', 'paypal']),
-  promo_code: z.string().optional(),
-  ambassador_id: z.string().uuid().optional(),
+  currency: z.string(),
+  payment_method: z.string(),
+  promo_code: z.string().optional().nullable(),
+  ambassador_id: z.string().optional().nullable(),
   plan_type: z.string().optional(),
 })
 
 export async function POST(request: NextRequest) {
-  // ✅ Rate Limiting (5 requêtes par minute par IP)
+  // ✅ Rate Limiting
   const ip = request.headers.get('x-forwarded-for') || 'unknown'
   const { success } = await rateLimit.limit(ip)
   
@@ -37,26 +36,19 @@ export async function POST(request: NextRequest) {
   }
   
   const body = await request.json()
-
-  console.error('📦 Payload reçu:', body)
-  console.error('📦 event_id reçu:', body.event_id)
-  console.error('📦 amount reçu:', body.amount)
-  console.error('📦 currency reçu:', body.currency)
-  console.error('📦 payment_method reçu:', body.payment_method)
-
+  console.error('📦 Payload reçu:', JSON.stringify(body, null, 2))
   
   // ✅ Validation des données entrantes
   const validation = paymentSchema.safeParse(body)
-  
   if (!validation.success) {
-    console.error('❌ Erreur validation:', validation.error.issues) 
+    console.error('❌ Erreur validation:', validation.error.issues)
     return NextResponse.json(
       { error: 'Données invalides', details: validation.error.issues },
       { status: 400 }
     )
   }
 
-  const { event_id, amount, currency, payment_method, promo_code, ambassador_id } = validation.data
+  const { event_id, amount, currency, payment_method, promo_code, ambassador_id, plan_type } = validation.data
   
   try {
     let finalAmount = amount
@@ -65,9 +57,8 @@ export async function POST(request: NextRequest) {
     let discountApplied = false
     let discountPercent = 0
 
-    // ✅ Vérification du code promo (avec transaction pour éviter les doublons)
+    // ✅ Vérification du code promo
     if (promo_code) {
-      // Vérifier l'existence du code en une seule requête
       const { data: ambassador, error: ambassadorError } = await supabase
         .from('ambassadors')
         .select('id, commission_rate, expires_at, status')
@@ -89,7 +80,6 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Vérifier si l'utilisateur a déjà utilisé ce code promo
       const { data: existingPayment } = await supabase
         .from('payments')
         .select('id')
@@ -121,9 +111,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ✅ Appel sécurisé à FedaPay avec timeout
+    // ✅ Appel à FedaPay
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 secondes
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
 
     try {
       const response = await fetch('https://api.fedapay.com/v1/transactions', {
@@ -135,15 +125,16 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify({
           amount: Math.round(finalAmount * 100),
           currency: currency,
-          description: `Premium - ${event_id}${discountApplied ? ` (réduction ${discountPercent}%)` : ''}`,
+          description: `Premium - ${event_id || 'nouvel_utilisateur'}${discountApplied ? ` (réduction ${discountPercent}%)` : ''}`,
           payment_method: payment_method,
           callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/webhook/fedapay`,
           return_url: `${process.env.NEXT_PUBLIC_APP_URL}/fr/dashboard`,
           metadata: {
-            event_id: event_id === 'pending' ? null : event_id,
+            event_id: event_id,
             user_id: user.id,
             promo_code: finalPromoCode,
             ambassador_id: finalAmbassadorId,
+            plan_type: plan_type,
           },
         }),
         signal: controller.signal,
@@ -161,7 +152,7 @@ export async function POST(request: NextRequest) {
       const { error: insertError } = await supabase
         .from('payments')
         .insert({
-          event_id: event_id,
+          event_id: event_id === 'pending' ? null : event_id,
           user_id: user.id,
           amount: amount,
           currency: currency,
@@ -172,12 +163,12 @@ export async function POST(request: NextRequest) {
           status: 'pending',
           promo_code: finalPromoCode,
           ambassador_id: finalAmbassadorId,
+          plan_type: plan_type,
           provider_response: data,
         })
 
       if (insertError) {
         console.error('Erreur insertion paiement:', insertError)
-        // On ne bloque pas le paiement si l'insertion échoue, mais on log
       }
       
       return NextResponse.json({
