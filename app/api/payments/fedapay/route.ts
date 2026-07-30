@@ -38,17 +38,18 @@ export async function POST(request: NextRequest) {
   
   const body = await request.json()
 
-  console.log('📦 Payload reçu:', body)
-  console.log('📦 event_id reçu:', body.event_id)
-  console.log('📦 amount reçu:', body.amount)
-  console.log('📦 currency reçu:', body.currency)
-  console.log('📦 payment_method reçu:', body.payment_method)
+  console.error('📦 Payload reçu:', body)
+  console.error('📦 event_id reçu:', body.event_id)
+  console.error('📦 amount reçu:', body.amount)
+  console.error('📦 currency reçu:', body.currency)
+  console.error('📦 payment_method reçu:', body.payment_method)
+
   
   // ✅ Validation des données entrantes
   const validation = paymentSchema.safeParse(body)
   
   if (!validation.success) {
-    console.error('❌ Erreur validation:', validation.error.issues)  // ← AJOUTE CETTE LIGNE (optionnelle)
+    console.error('❌ Erreur validation:', validation.error.issues) 
     return NextResponse.json(
       { error: 'Données invalides', details: validation.error.issues },
       { status: 400 }
