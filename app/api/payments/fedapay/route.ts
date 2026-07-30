@@ -133,8 +133,8 @@ export async function POST(request: NextRequest) {
         currency: currency,
         description: `Paiement ${plan_type || 'standard'} - ${event_id || 'nouvel_utilisateur'}`,
         payment_method: payment_method,
-        callback_url: callbackUrl,
-        return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://eventvivo.com'}/fr/dashboard`,
+        callback_url: 'https://eventvivo.com/api/payments/webhook/fedapay',
+        return_url: 'https://eventvivo.com/fr/dashboard',
         metadata: {
           event_id: event_id || 'pending',
           user_id: user.id,
@@ -143,7 +143,6 @@ export async function POST(request: NextRequest) {
           plan_type: plan_type || 'standard',
         },
       }
-
       console.error('📦 Requête FedaPay:', JSON.stringify(requestBody, null, 2))
 
       const response = await fetch('https://api.fedapay.com/v1/transactions', {
