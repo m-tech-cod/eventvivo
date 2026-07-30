@@ -144,6 +144,7 @@ export async function POST(request: NextRequest) {
         },
       }
       console.error('📦 Requête FedaPay:', JSON.stringify(requestBody, null, 2))
+      console.error('🔑 Clé API (début):', process.env.FEDAPAY_API_KEY?.slice(0, 15))
 
       const response = await fetch('https://api.fedapay.com/v1/transactions', {
         method: 'POST',
