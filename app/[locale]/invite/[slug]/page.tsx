@@ -1,16 +1,28 @@
-import { createClient } from '@/lib/supabase/client'
+import { createServerClient } from '@/lib/supabase/server'
 import { Metadata } from 'next'
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
 import InvitationClient from './InvitationClient'
 
+// ⚠️ Empêche Next de pré-rendre cette page en statique au build.
+// Sans ça, la requête Supabase ne s'exécute qu'une fois au build,
+// le résultat est mis en cache, et rien ne s'exécute plus au runtime
+// (d'où l'absence de logs sur Vercel).
+export const dynamic = 'force-dynamic'
+
+type Params = { params: Promise<{ slug: string; locale: string }> }
+
 // ✅ generateMetadata pour les métadonnées Open Graph
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const supabase = createClient()
-  const { data: event } = await supabase
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const { slug } = await params // ⚠️ Next.js 15 : params est une Promise
+  const supabase = await createServerClient()
+
+  const { data: event, error } = await supabase
     .from('events')
     .select('*')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .single()
+
+  console.log('[generateMetadata] slug:', slug, '| event:', event, '| error:', error)
 
   if (!event) {
     return {
@@ -53,13 +65,17 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 // ✅ Composant serveur avec BackgroundImage
-export default async function InvitationPage({ params }: { params: { slug: string } }) {
-  const supabase = createClient()
-  const { data: event } = await supabase
+export default async function InvitationPage({ params }: Params) {
+  const { slug } = await params // ⚠️ Next.js 15 : params est une Promise
+  const supabase = await createServerClient()
+
+  const { data: event, error } = await supabase
     .from('events')
     .select('*')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .single()
+
+  console.log('[InvitationPage] slug:', slug, '| event:', event, '| error:', error)
 
   // Si l'événement n'existe pas, on affiche une erreur
   if (!event) {
@@ -83,7 +99,7 @@ export default async function InvitationPage({ params }: { params: { slug: strin
       className="min-h-screen py-16"
     >
       <div className="flex-1 overflow-y-auto">
-        <InvitationClient slug={params.slug} />
+        <InvitationClient slug={slug} />
       </div>
     </BackgroundImage>
   )
