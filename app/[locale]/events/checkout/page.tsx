@@ -155,6 +155,7 @@ export default function CheckoutPage() {
         payment_method: paymentMethod,
         promo_code: promoApplied ? promoCode : null,
         ambassador_id: ambassadorId,
+        plan_type: planType,
       }
 
       const endpoint = paymentMethod === 'paypal'
