@@ -23,7 +23,8 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
   const [existingRSVP, setExistingRSVP] = useState<any>(null)
   const [invitationId, setInvitationId] = useState<string | null>(null)
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [notFound, setNotFound] = useState(false) // événement introuvable au chargement
+  const [error, setError] = useState<string | null>(null) // erreur lors de la soumission du RSVP
   
   const [guests, setGuests] = useState(0)
   const [submitting, setSubmitting] = useState(false)
@@ -48,7 +49,8 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
         .single()
       
       if (eventError || !eventData) {
-        setError('Événement non trouvé')
+        console.error('[InvitationClient] event fetch error:', eventError)
+        setNotFound(true)
         setLoading(false)
         return
       }
@@ -172,7 +174,8 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
       setExistingRSVP({ status, number_of_guests: status === 'attending' ? guests : 0 })
       
     } catch (err: any) {
-      setError(err.message)
+      console.error('[InvitationClient] RSVP submission error:', err)
+      setError(err.message || "Une erreur est survenue lors de l'envoi de votre réponse.")
     } finally {
       setSubmitting(false)
     }
@@ -186,7 +189,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
     )
   }
   
-  if (error || !event) {
+  if (notFound || !event) {
     return (
       <BackgroundImage src="/images/foule.webp" animate="zoom" overlayOpacity={0.35}>
         <div className="flex-1 flex items-center justify-center px-4">
