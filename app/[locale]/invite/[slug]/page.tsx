@@ -79,7 +79,7 @@ export default async function InvitationPage({ params }: { params: { slug: strin
     <BackgroundImage
       src={event.cover_image || '/images/foule.webp'}
       animate="zoom" overlayOpacity={0.35}
-      className="min-h-screen"
+       className="min-h-screen py-16"
     >
       <div className="flex-1 overflow-y-auto">
         <InvitationClient slug={params.slug} />

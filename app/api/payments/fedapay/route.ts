@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
           callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/webhook/fedapay`,
           return_url: `${process.env.NEXT_PUBLIC_APP_URL}/fr/dashboard`,
           metadata: {
-            event_id: event_id,
+            event_id: event_id === 'pending' ? null : event_id,
             user_id: user.id,
             promo_code: finalPromoCode,
             ambassador_id: finalAmbassadorId,
