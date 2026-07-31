@@ -3,17 +3,30 @@ import { Metadata } from 'next'
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
 import InvitationClient from './InvitationClient'
 
-// ⚠️ Empêche Next de pré-rendre cette page en statique au build.
-// Sans ça, la requête Supabase ne s'exécute qu'une fois au build,
-// le résultat est mis en cache, et rien ne s'exécute plus au runtime
-// (d'où l'absence de logs sur Vercel).
 export const dynamic = 'force-dynamic'
 
 type Params = { params: Promise<{ slug: string; locale: string }> }
 
+// Image de secours par style, utilisée quand l'organisateur n'a pas
+// uploadé de photo de couverture personnalisée. Chaque style doit
+// avoir un fichier correspondant dans /public/images/styles/.
+const STYLE_BACKGROUNDS: Record<string, string> = {
+  classique: '/images/styles/classique.jpg',
+  moderne: '/images/styles/moderne.jpg',
+  nature: '/images/styles/nature.jpg',
+  elegant: '/images/styles/elegant.jpg',
+  luxe: '/images/styles/luxe.jpg',
+}
+
+const DEFAULT_BACKGROUND = '/images/foule.webp'
+
+function getEventBackground(event: { cover_image?: string | null; style?: string | null }) {
+  return event.cover_image || STYLE_BACKGROUNDS[event.style || ''] || DEFAULT_BACKGROUND
+}
+
 // ✅ generateMetadata pour les métadonnées Open Graph
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const { slug } = await params // ⚠️ Next.js 15 : params est une Promise
+  const { slug } = await params
   const supabase = await createServerClient()
 
   const { data: event, error } = await supabase
@@ -31,7 +44,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     }
   }
 
-  const coverImage = event.cover_image || '/images/og-event-default.jpg'
+  // Priorité : photo uploadée par l'organisateur > image par défaut du style choisi
+  const coverImage = getEventBackground(event)
   const eventUrl = `https://eventvivo.com/fr/invite/${event.slug}`
 
   return {
@@ -66,7 +80,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 // ✅ Composant serveur avec BackgroundImage
 export default async function InvitationPage({ params }: Params) {
-  const { slug } = await params // ⚠️ Next.js 15 : params est une Promise
+  const { slug } = await params
   const supabase = await createServerClient()
 
   const { data: event, error } = await supabase
@@ -77,7 +91,6 @@ export default async function InvitationPage({ params }: Params) {
 
   console.log('[InvitationPage] slug:', slug, '| event:', event, '| error:', error)
 
-  // Si l'événement n'existe pas, on affiche une erreur
   if (!event) {
     return (
       <BackgroundImage src="/images/foule.webp" animate="zoom" overlayOpacity={0.35}>
@@ -93,7 +106,7 @@ export default async function InvitationPage({ params }: Params) {
 
   return (
     <BackgroundImage
-      src={event.cover_image || '/images/foule.webp'}
+      src={getEventBackground(event)}
       animate="zoom"
       overlayOpacity={0.35}
       className="min-h-screen py-16"

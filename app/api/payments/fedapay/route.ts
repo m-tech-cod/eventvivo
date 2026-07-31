@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { rateLimit } from '@/lib/rate-limit'
-import { z } from 'zod'
+import { paymentSchema } from '@/lib/validations/payment'
 
 export const dynamic = 'force-dynamic'
-
-// ✅ Schéma de validation Zod
-const paymentSchema = z.object({
-  event_id: z.string().optional(),
-  amount: z.number().positive().min(0.01),
-  currency: z.string(),
-  payment_method: z.string(),
-  promo_code: z.string().optional().nullable(),
-  ambassador_id: z.string().optional().nullable(),
-  plan_type: z.string().optional(),
-})
 
 export async function POST(request: NextRequest) {
   // ✅ Rate Limiting
@@ -38,7 +27,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   console.error('📦 Payload reçu:', JSON.stringify(body, null, 2))
 
-  // ✅ Validation
+  // ✅ Validation (schéma partagé avec le reste de l'app)
   const validation = paymentSchema.safeParse(body)
   if (!validation.success) {
     console.error('❌ Erreur validation:', validation.error.issues)
@@ -54,8 +43,6 @@ export async function POST(request: NextRequest) {
     let finalAmount = amount
     let finalPromoCode = promo_code || null
     let finalAmbassadorId = ambassador_id || null
-    let discountApplied = false
-    let discountPercent = 0
 
     // ✅ Code promo
     if (promo_code) {
@@ -67,17 +54,11 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (ambassadorError || !ambassador) {
-        return NextResponse.json(
-          { error: 'Code promo invalide' },
-          { status: 400 }
-        )
+        return NextResponse.json({ error: 'Code promo invalide' }, { status: 400 })
       }
 
       if (ambassador.expires_at && new Date() > new Date(ambassador.expires_at)) {
-        return NextResponse.json(
-          { error: 'Ce code promo a expiré' },
-          { status: 400 }
-        )
+        return NextResponse.json({ error: 'Ce code promo a expiré' }, { status: 400 })
       }
 
       const { data: existingPayment } = await supabase
@@ -89,96 +70,139 @@ export async function POST(request: NextRequest) {
         .maybeSingle()
 
       if (existingPayment) {
-        return NextResponse.json(
-          { error: 'Vous avez déjà utilisé ce code promo' },
-          { status: 400 }
-        )
+        return NextResponse.json({ error: 'Vous avez déjà utilisé ce code promo' }, { status: 400 })
       }
 
       const rate = ambassador.commission_rate || 10
-      discountPercent = rate
-      discountApplied = true
-      finalAmount = amount * (1 - (rate / 100))
-      finalAmount = Math.round(finalAmount)
+      finalAmount = Math.round(amount * (1 - rate / 100))
       finalPromoCode = promo_code.toUpperCase()
       finalAmbassadorId = ambassador.id
     }
 
     if (finalAmount <= 0) {
-      return NextResponse.json(
-        { error: 'Montant invalide' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Montant invalide' }, { status: 400 })
     }
 
-    // ✅ Appel à FedaPay
+    const apiKey = process.env.FEDAPAY_API_KEY
+    if (!apiKey) {
+      console.error('❌ FEDAPAY_API_KEY non définie')
+      return NextResponse.json({ error: 'Configuration de paiement manquante' }, { status: 500 })
+    }
+
+    // ✅ Récupère les infos client nécessaires à FedaPay
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('first_name, last_name, phone, email')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    const customer: Record<string, any> = {
+      firstname: profile?.first_name || 'Client',
+      lastname: profile?.last_name || 'Eventvivo',
+      email: profile?.email || user.email,
+    }
+
+    if (profile?.phone) {
+      customer.phone_number = {
+        number: profile.phone.replace(/[\s.\-()]/g, ''),
+        country: 'bj',
+      }
+    }
+
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 10000)
 
     try {
-      // ✅ Vérifier la clé API
-      const apiKey = process.env.FEDAPAY_API_KEY
-      if (!apiKey) {
-        console.error('❌ FEDAPAY_API_KEY non définie')
-        throw new Error('Configuration de paiement manquante')
-      }
-
-      const requestBody = {
-        amount: Math.round(finalAmount),
-        currency: currency,
+      // ── Étape 1 : créer la transaction ──────────────────────────────
+      const createBody = {
         description: `Paiement ${plan_type || 'standard'} - ${event_id || 'nouvel_utilisateur'}`,
-        payment_method: payment_method,
-        callback_url: 'https://eventvivo.com/api/payments/webhook/fedapay',
-        return_url: 'https://eventvivo.com/fr/dashboard',
-        metadata: {
-          event_id: event_id || 'pending',
-          user_id: user.id,
-          promo_code: finalPromoCode,
-          ambassador_id: finalAmbassadorId,
-          plan_type: plan_type || 'standard',
-        },
+        amount: Math.round(finalAmount),
+        currency: { iso: currency }, // ⚠️ FedaPay attend un objet, pas une string
+        callback_url: 'https://eventvivo.com/fr/dashboard', // redirection du NAVIGATEUR après paiement
+        customer,
       }
 
-      console.error('📦 Requête FedaPay:', JSON.stringify(requestBody, null, 2))
-      console.error('🔑 Clé API (début):', process.env.FEDAPAY_API_KEY?.slice(0, 15))
+      console.error('📦 Requête FedaPay (création):', JSON.stringify(createBody, null, 2))
 
-      const response = await fetch('https://api.fedapay.com/v1/transactions', {
+      const createResponse = await fetch('https://api.fedapay.com/v1/transactions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify(createBody),
+        signal: controller.signal,
+      })
+
+      const createText = await createResponse.text()
+      console.error('📦 Réponse brute FedaPay (création):', createText)
+
+      let createData
+      try {
+        createData = JSON.parse(createText)
+      } catch {
+        console.error('❌ Réponse non-JSON (création):', createText)
+        return NextResponse.json(
+          { error: 'FedaPay a renvoyé une réponse invalide lors de la création de la transaction' },
+          { status: 502 }
+        )
+      }
+
+      if (!createResponse.ok) {
+        console.error('❌ Erreur FedaPay (création):', createData)
+        return NextResponse.json(
+          { error: createData.message || createData.error || 'Erreur FedaPay' },
+          { status: createResponse.status }
+        )
+      }
+
+      const transactionId = createData.transaction?.id ?? createData.id
+      if (!transactionId) {
+        console.error('❌ Pas d\'ID de transaction dans la réponse FedaPay:', createData)
+        return NextResponse.json({ error: 'Réponse FedaPay inattendue' }, { status: 502 })
+      }
+
+      // ── Étape 2 : générer le lien de paiement (token) ───────────────
+      const tokenResponse = await fetch(`https://api.fedapay.com/v1/transactions/${transactionId}/token`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
         signal: controller.signal,
       })
 
       clearTimeout(timeoutId)
 
-      // ✅ Lire la réponse
-      const responseText = await response.text()
-      console.error('📦 Réponse brute de FedaPay:', responseText)
+      const tokenText = await tokenResponse.text()
+      console.error('📦 Réponse brute FedaPay (token):', tokenText)
 
-      // ✅ Parser la réponse
-      let data
+      let tokenData
       try {
-        data = JSON.parse(responseText)
-      } catch (parseError) {
-        console.error('❌ Réponse non-JSON:', responseText)
+        tokenData = JSON.parse(tokenText)
+      } catch {
+        console.error('❌ Réponse non-JSON (token):', tokenText)
         return NextResponse.json(
-          { error: `FedaPay a renvoyé une erreur: ${responseText}` },
-          { status: 500 }
+          { error: 'FedaPay a renvoyé une réponse invalide lors de la génération du lien de paiement' },
+          { status: 502 }
         )
       }
 
-      if (!response.ok) {
-        console.error('❌ Erreur FedaPay:', data)
+      if (!tokenResponse.ok) {
+        console.error('❌ Erreur FedaPay (token):', tokenData)
         return NextResponse.json(
-          { error: data.message || data.error || 'Erreur FedaPay' },
-          { status: response.status }
+          { error: tokenData.message || tokenData.error || 'Erreur FedaPay (génération du lien)' },
+          { status: tokenResponse.status }
         )
       }
 
-      // ✅ Sauvegarder la transaction
+      const paymentUrl = tokenData.url || tokenData.token_url
+      if (!paymentUrl) {
+        console.error('❌ Pas d\'URL de paiement dans la réponse FedaPay:', tokenData)
+        return NextResponse.json({ error: 'Lien de paiement introuvable dans la réponse FedaPay' }, { status: 502 })
+      }
+
+      // ✅ Sauvegarder la transaction en base
       const { error: insertError } = await supabase
         .from('payments')
         .insert({
@@ -189,12 +213,12 @@ export async function POST(request: NextRequest) {
           final_amount: finalAmount,
           payment_method: payment_method,
           provider: 'fedaPay',
-          transaction_id: data.transaction.id,
+          transaction_id: transactionId,
           status: 'pending',
           promo_code: finalPromoCode,
           ambassador_id: finalAmbassadorId,
           plan_type: plan_type || 'standard',
-          provider_response: data,
+          provider_response: createData,
         })
 
       if (insertError) {
@@ -203,8 +227,8 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        transaction_id: data.transaction.id,
-        payment_url: data.transaction.payment_url,
+        transaction_id: transactionId,
+        payment_url: paymentUrl,
       })
 
     } catch (fetchError: any) {

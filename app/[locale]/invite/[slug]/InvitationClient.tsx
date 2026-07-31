@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useParams } from 'next/navigation'
 import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Calendar, MapPin, Clock, Users, CheckCircle, XCircle, Sparkles } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
@@ -15,19 +16,27 @@ interface InvitationClientProps {
   slug: string
 }
 
+function normalizePhone(phone: string) {
+  return phone.replace(/[\s.\-()]/g, '')
+}
+
 export default function InvitationClient({ slug }: InvitationClientProps) {
   const supabase = createClient()
-  
+
   const [loading, setLoading] = useState(true)
   const [event, setEvent] = useState<any>(null)
   const [existingRSVP, setExistingRSVP] = useState<any>(null)
   const [invitationId, setInvitationId] = useState<string | null>(null)
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null)
-  const [notFound, setNotFound] = useState(false) // événement introuvable au chargement
-  const [error, setError] = useState<string | null>(null) // erreur lors de la soumission du RSVP
-  
+  const [notFound, setNotFound] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const [guestName, setGuestName] = useState('')
+  const [guestPhone, setGuestPhone] = useState('')
   const [guests, setGuests] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const [lookingUp, setLookingUp] = useState(false)
+  const [lookupNotFound, setLookupNotFound] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
 
   const styleClasses: Record<string, string> = {
@@ -37,68 +46,109 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
     elegant: 'bg-white/90 backdrop-blur-sm border border-[#D4A017] rounded-xl shadow-2xl',
     luxe: 'bg-white/90 backdrop-blur-sm border-2 border-[#F59E0B] rounded-xl shadow-2xl',
   }
-  
+
+  // Ne charge que l'événement. Chaque invité est individuel : on ne sait
+  // qui il est qu'une fois qu'il a saisi son nom + téléphone (voir
+  // handleLookup / handleRSVP), donc pas de préchargement d'invitation ici.
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchEvent = async () => {
       setLoading(true)
-      
+
       const { data: eventData, error: eventError } = await supabase
         .from('events')
         .select('*')
         .eq('slug', slug)
         .single()
-      
+
       if (eventError || !eventData) {
         console.error('[InvitationClient] event fetch error:', eventError)
         setNotFound(true)
         setLoading(false)
         return
       }
-      
+
       setEvent(eventData)
-      
-      const { data: existingInvitation } = await supabase
-        .from('invitations')
-        .select('*, rsvps(*)')
-        .eq('event_id', eventData.id)
-        .eq('recipient_name', 'Invité')
-        .maybeSingle()
-      
-      if (existingInvitation) {
-        setInvitationId(existingInvitation.id)
-        
-        if (existingInvitation.qr_code_token) {
-          const qrData = `${window.location.origin}/api/rsvp/scan/${slug}/${existingInvitation.id}`
-          const encodedData = encodeURIComponent(qrData)
-          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodedData}&bgcolor=FFFFFF&color=1E3A8A&margin=10`
-          setQrImageUrl(qrUrl)
-        }
-        
-        if (existingInvitation.rsvps && existingInvitation.rsvps.length > 0) {
-          setExistingRSVP(existingInvitation.rsvps[0])
-        }
-      }
-      
       setLoading(false)
     }
-    
-    fetchData()
+
+    fetchEvent()
   }, [slug, supabase])
 
+  const applyQrIfNeeded = (inv: { id: string; qr_code_token: string | null }) => {
+    if (inv.qr_code_token) {
+      const qrData = `${window.location.origin}/fr/rsvp/scan/${slug}/${inv.id}`
+      const encodedData = encodeURIComponent(qrData)
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodedData}&bgcolor=FFFFFF&color=1E3A8A&margin=10`
+      setQrImageUrl(qrUrl)
+    }
+  }
+
+  // Retrouve une réponse déjà envoyée, sans en créer une nouvelle.
+  const handleLookup = async () => {
+    if (!guestName.trim() || !guestPhone.trim()) {
+      setError('Merci de renseigner votre nom et votre téléphone.')
+      return
+    }
+
+    setLookingUp(true)
+    setError(null)
+    setLookupNotFound(false)
+
+    try {
+      const { data: found, error: lookupError } = await supabase
+        .from('invitations')
+        .select('*, rsvps(*)')
+        .eq('event_id', event.id)
+        .eq('recipient_phone', normalizePhone(guestPhone))
+        .maybeSingle()
+
+      if (lookupError) throw lookupError
+
+      if (!found) {
+        setLookupNotFound(true)
+        return
+      }
+
+      setInvitationId(found.id)
+      applyQrIfNeeded(found)
+
+      if (found.rsvps && found.rsvps.length > 0) {
+        setExistingRSVP(found.rsvps[0])
+      } else {
+        setLookupNotFound(true) // invitation trouvée mais pas encore de réponse
+      }
+    } catch (err: any) {
+      console.error('[InvitationClient] lookup error:', err)
+      setError(err.message || 'Impossible de retrouver votre réponse pour le moment.')
+    } finally {
+      setLookingUp(false)
+    }
+  }
+
   const handleRSVP = async (status: string) => {
+    if (!guestName.trim() || !guestPhone.trim()) {
+      setError('Merci de renseigner votre nom et votre téléphone avant de répondre.')
+      return
+    }
+
     setSubmitting(true)
     setError(null)
-    
+
     try {
+      const normalizedPhone = normalizePhone(guestPhone)
       let invitationIdLocal: string
-      
+
+      // Un invité = une ligne `invitations` propre à lui (identifié par
+      // téléphone), pour permettre un comptage correct et un QR code
+      // réellement unique par personne — plutôt qu'une seule invitation
+      // générique partagée entre tous les visiteurs du lien public.
       const { data: existingInvitation } = await supabase
         .from('invitations')
         .select('id')
         .eq('event_id', event.id)
-        .eq('recipient_name', 'Invité')
+        .eq('recipient_phone', normalizedPhone)
         .maybeSingle()
-      
+
       if (existingInvitation) {
         invitationIdLocal = existingInvitation.id
       } else {
@@ -106,19 +156,20 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
           .from('invitations')
           .insert({
             event_id: event.id,
-            recipient_name: 'Invité',
-            unique_link: `inv-${slug}`,
-            status: 'responded'
+            recipient_name: guestName.trim(),
+            recipient_phone: normalizedPhone,
+            unique_link: `inv-${slug}-${crypto.randomUUID()}`,
+            status: 'responded',
           })
           .select('id')
           .single()
-        
+
         if (invError) throw invError
         invitationIdLocal = newInvitation.id
-        setInvitationId(invitationIdLocal)
       }
-      
-      // ✅ Vérifier si un RSVP existe déjà pour cette invitation
+
+      setInvitationId(invitationIdLocal)
+
       const { data: existingRsvp } = await supabase
         .from('rsvps')
         .select('id')
@@ -126,53 +177,47 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
         .maybeSingle()
 
       if (existingRsvp) {
-        // Mettre à jour le RSVP existant
         const { error: updateError } = await supabase
           .from('rsvps')
           .update({
             status: status,
             number_of_guests: status === 'attending' ? guests : 0,
-            responded_at: new Date().toISOString()
+            responded_at: new Date().toISOString(),
           })
           .eq('id', existingRsvp.id)
 
         if (updateError) throw updateError
       } else {
-        // Créer un nouveau RSVP
         const { error: rsvpError } = await supabase
           .from('rsvps')
           .insert({
             invitation_id: invitationIdLocal,
             status: status,
             number_of_guests: status === 'attending' ? guests : 0,
-            responded_at: new Date().toISOString()
+            responded_at: new Date().toISOString(),
           })
-        
+
         if (rsvpError) throw rsvpError
       }
-      
+
       await supabase
         .from('invitations')
         .update({ status: 'responded' })
         .eq('id', invitationIdLocal)
-      
+
       if (status === 'attending' && event.is_qr_active) {
         const qrToken = crypto.randomUUID()
-        
+
         await supabase
           .from('invitations')
           .update({ qr_code_token: qrToken })
           .eq('id', invitationIdLocal)
-        
-        const qrData = `${window.location.origin}/api/rsvp/scan/${slug}/${invitationIdLocal}`
-        const encodedData = encodeURIComponent(qrData)
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodedData}&bgcolor=FFFFFF&color=1E3A8A&margin=10`
-        setQrImageUrl(qrUrl)
+
+        applyQrIfNeeded({ id: invitationIdLocal, qr_code_token: qrToken })
       }
-      
+
       setSuccess(status === 'attending' ? 'Merci pour votre confirmation !' : 'Nous avons bien pris en compte votre réponse.')
       setExistingRSVP({ status, number_of_guests: status === 'attending' ? guests : 0 })
-      
     } catch (err: any) {
       console.error('[InvitationClient] RSVP submission error:', err)
       setError(err.message || "Une erreur est survenue lors de l'envoi de votre réponse.")
@@ -180,7 +225,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
       setSubmitting(false)
     }
   }
-  
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -188,7 +233,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
       </div>
     )
   }
-  
+
   if (notFound || !event) {
     return (
       <BackgroundImage src="/images/foule.webp" animate="zoom" overlayOpacity={0.35}>
@@ -217,7 +262,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
   }
 
   const styleClass = styleClasses[event.style] || styleClasses.classique
-  
+
   return (
     <BackgroundImage
       src={event.cover_image || '/images/foule.webp'}
@@ -240,7 +285,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                 <span className="text-[#F59E0B] font-bold text-3xl font-poppins drop-shadow-lg">vivo</span>
               </div>
             </div>
-            
+
             <div className="text-sm text-white/70 mb-2 drop-shadow">
               {event.type === 'mariage' && '💍 Mariage'}
               {event.type === 'anniversaire' && '🎂 Anniversaire'}
@@ -252,7 +297,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
               {event.type === 'ago' && '🥁 Agô'}
               {event.type === 'formation' && '📚 Formation'}
               {event.type === 'lancement' && '🚀 Lancement de produit'}
-              {event.type === 'conference' && '🎤 Conférence'}  
+              {event.type === 'conference' && '🎤 Conférence'}
             </div>
             <h1 className="text-3xl md:text-4xl font-bold text-white font-poppins mb-3 drop-shadow-lg">
               {event.name}
@@ -285,12 +330,12 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                           weekday: 'long',
                           day: 'numeric',
                           month: 'long',
-                          year: 'numeric'
+                          year: 'numeric',
                         })}
                       </p>
                     </div>
                   </div>
-                  
+
                   {event.time && (
                     <div className="flex items-start gap-3">
                       <div className="w-9 h-9 bg-[#1E3A8A]/10 rounded-full flex items-center justify-center flex-shrink-0">
@@ -302,7 +347,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                       </div>
                     </div>
                   )}
-                  
+
                   {event.location && (
                     <div className="flex items-start gap-3">
                       <div className="w-9 h-9 bg-[#1E3A8A]/10 rounded-full flex items-center justify-center flex-shrink-0">
@@ -314,7 +359,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                       </div>
                     </div>
                   )}
-                  
+
                   <div className="pt-2 border-t border-gray-100">
                     <p className="text-xs text-gray-400">
                       Style : <span className="font-medium capitalize text-[#1E3A8A]">{event.style || 'Classique'}</span>
@@ -324,7 +369,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
               </CardContent>
             </Card>
           </motion.div>
-          
+
           {success && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -341,13 +386,13 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
               </Alert>
             </motion.div>
           )}
-          
+
           {error && (
             <Alert variant="destructive" className="mt-4">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          
+
           {/* QR CODE INDIVIDUEL */}
           {existingRSVP && existingRSVP.status === 'attending' && event.is_qr_active && qrImageUrl && (
             <motion.div
@@ -374,8 +419,8 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
               </Card>
             </motion.div>
           )}
-          
-          {/* RSVP AVEC BOUTONS ANIMÉS */}
+
+          {/* IDENTIFICATION + RSVP */}
           {!existingRSVP && !success && (
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -384,7 +429,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
             >
               <Card className="mt-6 border-2 border-[#F59E0B] relative overflow-hidden bg-white/95 backdrop-blur-sm">
                 <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-[#F59E0B] to-[#10B981] h-1 animate-pulse" />
-                
+
                 <CardHeader>
                   <CardTitle className="text-center text-[#1E3A8A] text-xl flex items-center justify-center gap-2">
                     <Sparkles className="w-5 h-5 text-[#F59E0B]" />
@@ -393,8 +438,48 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {/* Identification */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="guestName" className="text-sm text-gray-700">Votre nom *</Label>
+                      <Input
+                        id="guestName"
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                        placeholder="Ex: Awa Koffi"
+                        className="border-gray-300 focus:border-[#1E3A8A] focus:ring-[#1E3A8A]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="guestPhone" className="text-sm text-gray-700">Votre téléphone *</Label>
+                      <Input
+                        id="guestPhone"
+                        type="tel"
+                        value={guestPhone}
+                        onChange={(e) => setGuestPhone(e.target.value)}
+                        placeholder="Ex: 97 00 00 00"
+                        className="border-gray-300 focus:border-[#1E3A8A] focus:ring-[#1E3A8A]"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleLookup}
+                    disabled={lookingUp}
+                    className="text-xs text-[#1E3A8A] underline underline-offset-2 mb-4 hover:text-[#1E3A8A]/80"
+                  >
+                    {lookingUp ? 'Recherche en cours...' : 'Déjà répondu ? Retrouver ma réponse'}
+                  </button>
+
+                  {lookupNotFound && (
+                    <p className="text-xs text-gray-500 mb-4">
+                      Aucune réponse trouvée avec ce numéro. Répondez ci-dessous pour la première fois.
+                    </p>
+                  )}
+
                   <div className="flex flex-col sm:flex-row gap-4">
-                    <motion.div 
+                    <motion.div
                       className="flex-1"
                       whileHover={{ scale: 1.03 }}
                       whileTap={{ scale: 0.97 }}
@@ -410,7 +495,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                       </Button>
                     </motion.div>
 
-                    <motion.div 
+                    <motion.div
                       className="flex-1"
                       whileHover={{ scale: 1.03 }}
                       whileTap={{ scale: 0.97 }}
@@ -426,8 +511,8 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                       </Button>
                     </motion.div>
                   </div>
-                  
-                  <motion.div 
+
+                  <motion.div
                     className="mt-4"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -441,13 +526,13 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                       onChange={(e) => setGuests(Number(e.target.value))}
                       className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-[#1E3A8A] focus:ring-[#1E3A8A]"
                     >
-                      {[0,1,2,3,4,5,6,7,8,9,10].map(n => (
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                         <option key={n} value={n}>{n}</option>
                       ))}
                     </select>
                   </motion.div>
 
-                  <motion.p 
+                  <motion.p
                     className="text-xs text-gray-400 text-center mt-4"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -459,7 +544,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
               </Card>
             </motion.div>
           )}
-          
+
           {existingRSVP && !success && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -482,10 +567,9 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                         Vous avez confirmé votre participation !
                       </p>
                       <p className="text-gray-500 text-sm mt-1">
-                        {existingRSVP.number_of_guests > 0 
+                        {existingRSVP.number_of_guests > 0
                           ? `Avec ${existingRSVP.number_of_guests} accompagnateur${existingRSVP.number_of_guests > 1 ? 's' : ''}`
-                          : 'Seul(e)'
-                        }
+                          : 'Seul(e)'}
                       </p>
                     </>
                   ) : (
@@ -507,7 +591,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
               </Card>
             </motion.div>
           )}
-          
+
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

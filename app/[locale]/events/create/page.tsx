@@ -104,16 +104,28 @@ export default function CreateEventPage() {
     }
 
     try {
-      const { data: existingEvent } = await supabase
-        .from('events')
-        .select('id')
-        .eq('organizer_id', user.id)
-        .single()
+      // Règle métier : 1 seul événement en plan Gratuit actif/à venir à la fois.
+      // Les plans payants (standard, prestige, vip) sont illimités.
+      // (Cette même règle est aussi appliquée en base via un trigger,
+      // cette vérification ici sert juste à donner un retour immédiat
+      // et clair à l'utilisateur avant de tenter la création.)
+      if (planType === 'free') {
+        const today = new Date().toISOString().split('T')[0]
 
-      if (existingEvent) {
-        setError('Vous avez déjà créé un événement. Un seul événement est autorisé dans cette version.')
-        setLoading(false)
-        return
+        const { data: existingFreeEvent } = await supabase
+          .from('events')
+          .select('id')
+          .eq('organizer_id', user.id)
+          .eq('plan_type', 'free')
+          .eq('status', 'active')
+          .gte('date', today)
+          .maybeSingle()
+
+        if (existingFreeEvent) {
+          setError('Vous avez déjà un événement gratuit actif ou à venir. Passez à un forfait payant pour créer un nouvel événement dès maintenant, ou patientez que votre événement gratuit actuel soit passé.')
+          setLoading(false)
+          return
+        }
       }
 
       const slug = formData.name
@@ -172,7 +184,13 @@ export default function CreateEventPage() {
 
       if (error) {
         console.error('❌ Erreur insertion:', error.message)
-        setError('Erreur: ' + error.message)
+        // Les erreurs métier levées par les triggers SQL (limite de plan,
+        // événement gratuit déjà actif) ont déjà un message clair et
+        // s'affichent tel quel. Les autres erreurs gardent un préfixe générique.
+        const isBusinessRuleError =
+          error.message.includes('événement gratuit actif') ||
+          error.message.includes('Limite d\'invitations')
+        setError(isBusinessRuleError ? error.message : 'Erreur: ' + error.message)
         setLoading(false)
         return
       }

@@ -6,7 +6,7 @@ export function Footer() {
       <div className="container mx-auto max-w-6xl">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
-            <div className="flex items-center gap-1 mb-4">
+            <div className="flex items-center mb-4">
               <span className="text-[#1E3A8A] font-bold text-xl font-poppins">Event</span>
               <span className="text-[#F59E0B] font-bold text-xl font-poppins">vivo</span>
             </div>
