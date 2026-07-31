@@ -128,12 +128,18 @@ export default function CreateEventPage() {
         }
       }
 
-      const slug = formData.name
+      const baseSlug = formData.name
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
+
+      // Suffixe aléatoire pour garantir l'unicité du slug (ex: deux événements
+      // "Test" créés à des moments différents auraient sinon le même slug et
+      // violeraient la contrainte UNIQUE de la colonne `slug`)
+      const uniqueSuffix = crypto.randomUUID().slice(0, 6)
+      const slug = `${baseSlug}-${uniqueSuffix}`
 
       let coverImageUrl = null
       if (coverFile) {
