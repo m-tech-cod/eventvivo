@@ -23,6 +23,8 @@ const PLANS = {
   vip: { label: 'VIP / Illimité', priceFcfa: 10000, priceEur: 39.99, priceUsd: 39.99 },
 }
 
+type PaymentMethod = 'mobile_money' | 'card'
+
 export default function CheckoutPage() {
   const { user } = useAuth()
   const router = useRouter()
@@ -31,12 +33,11 @@ export default function CheckoutPage() {
   const planType = searchParams.get('plan') || 'standard'
 
   const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
+  const [submittingMethod, setSubmittingMethod] = useState<PaymentMethod | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [currency, setCurrency] = useState('USD')
   const [price, setPrice] = useState(0)
   const [symbol, setSymbol] = useState('$')
-  const [paymentMethod, setPaymentMethod] = useState<'mobile_money' | 'card' | 'paypal'>('mobile_money')
 
   // ✅ Code promo
   const [promoCode, setPromoCode] = useState('')
@@ -49,36 +50,35 @@ export default function CheckoutPage() {
   const [originalPrice, setOriginalPrice] = useState(0)
 
   const plan = PLANS[planType as keyof typeof PLANS] || PLANS.standard
+  const submitting = submittingMethod !== null
 
- useEffect(() => {
-  const fetchCurrency = async () => {
-    try {
-      const res = await fetch('https://ipapi.co/json/')
-      const data = await res.json()
-      const countryCode = data.country_code
-      const detectedCurrency = getCurrencyByCountry(countryCode)
-      setCurrency(detectedCurrency)
-      
-      // ✅ Passer planType en paramètre
-      const basePrice = getPriceForCurrency(detectedCurrency, planType)
-      setOriginalPrice(basePrice)
-      setPrice(basePrice)
-      setFinalPrice(basePrice)
-      setSymbol(getCurrencySymbol(detectedCurrency))
-    } catch {
-      setCurrency('USD')
-      // ✅ Passer planType en paramètre
-      const basePrice = getPriceForCurrency('USD', planType)
-      setOriginalPrice(basePrice)
-      setPrice(basePrice)
-      setFinalPrice(basePrice)
-      setSymbol('$')
+  useEffect(() => {
+    const fetchCurrency = async () => {
+      try {
+        const res = await fetch('https://ipapi.co/json/')
+        const data = await res.json()
+        const countryCode = data.country_code
+        const detectedCurrency = getCurrencyByCountry(countryCode)
+        setCurrency(detectedCurrency)
+
+        const basePrice = getPriceForCurrency(detectedCurrency, planType)
+        setOriginalPrice(basePrice)
+        setPrice(basePrice)
+        setFinalPrice(basePrice)
+        setSymbol(getCurrencySymbol(detectedCurrency))
+      } catch {
+        setCurrency('USD')
+        const basePrice = getPriceForCurrency('USD', planType)
+        setOriginalPrice(basePrice)
+        setPrice(basePrice)
+        setFinalPrice(basePrice)
+        setSymbol('$')
+      }
+      setLoading(false)
     }
-    setLoading(false)
-  }
 
-  fetchCurrency()
-}, [planType])
+    fetchCurrency()
+  }, [planType])
 
   // ✅ Validation du code promo
   const applyPromoCode = async () => {
@@ -106,14 +106,13 @@ export default function CheckoutPage() {
       }
 
       const discount = result.discount_percent || 10
-      const newPrice = originalPrice * (1 - (discount / 100))
+      const newPrice = originalPrice * (1 - discount / 100)
       setDiscountPercent(discount)
       setFinalPrice(Math.round(newPrice * 100) / 100)
       setPromoApplied(true)
       setAmbassadorId(result.ambassador_id)
       setPromoError(null)
-
-    } catch (err) {
+    } catch {
       setPromoError('Erreur lors de la validation du code')
     } finally {
       setPromoLoading(false)
@@ -129,40 +128,45 @@ export default function CheckoutPage() {
     setDiscountPercent(0)
   }
 
-  // ✅ Paiement
-  const handlePayment = async () => {
+  // ✅ Paiement — un seul clic sur un moyen de paiement suffit à lancer la redirection FedaPay
+  const handlePayment = async (method: PaymentMethod) => {
     setError(null)
-    setSubmitting(true)
+    setSubmittingMethod(method)
 
     try {
-      // Vérifier si l'utilisateur a déjà un événement
-      const { data: existingEvent } = await supabase
-        .from('events')
-        .select('id')
-        .eq('organizer_id', user?.id)
-        .maybeSingle()
+      // Règle métier : seul le plan Gratuit est limité à 1 événement actif/à venir
+      // à la fois. Les plans payants sont illimités (même règle que le trigger SQL
+      // et que app/[locale]/events/create/page.tsx).
+      if (planType === 'free') {
+        const today = new Date().toISOString().split('T')[0]
 
-      if (existingEvent) {
-        setError('Vous avez déjà créé un événement. Un seul événement est autorisé dans cette version.')
-        setSubmitting(false)
-        return
+        const { data: existingFreeEvent } = await supabase
+          .from('events')
+          .select('id')
+          .eq('organizer_id', user?.id)
+          .eq('plan_type', 'free')
+          .eq('status', 'active')
+          .gte('date', today)
+          .maybeSingle()
+
+        if (existingFreeEvent) {
+          setError('Vous avez déjà un événement gratuit actif ou à venir. Choisissez un forfait payant pour créer un nouvel événement dès maintenant.')
+          setSubmittingMethod(null)
+          return
+        }
       }
 
       const payload = {
         event_id: 'pending', // Sera créé après paiement
         amount: finalPrice,
         currency: currency,
-        payment_method: paymentMethod,
+        payment_method: method,
         promo_code: promoApplied ? promoCode : null,
         ambassador_id: ambassadorId,
         plan_type: planType,
       }
 
-      const endpoint = paymentMethod === 'paypal'
-        ? '/api/payments/paypal'
-        : '/api/payments/fedapay'
-
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/payments/fedapay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -172,19 +176,19 @@ export default function CheckoutPage() {
 
       if (!data.success) {
         setError(data.error || 'Erreur de paiement')
-        setSubmitting(false)
+        setSubmittingMethod(null)
         return
       }
 
       if (data.payment_url) {
         window.location.href = data.payment_url
-      } else if (data.approval_url) {
-        window.location.href = data.approval_url
+      } else {
+        setError('Lien de paiement introuvable, veuillez réessayer.')
+        setSubmittingMethod(null)
       }
-
     } catch (err: any) {
       setError(err.message || 'Une erreur est survenue')
-      setSubmitting(false)
+      setSubmittingMethod(null)
     }
   }
 
@@ -210,7 +214,7 @@ export default function CheckoutPage() {
             <Button
               variant="ghost"
               className="mb-4 text-white hover:bg-white/10 backdrop-blur-sm"
-              onClick={() => router.push('/fr/events/choose-plan')}
+              onClick={() => router.back()}
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Retour
@@ -237,29 +241,30 @@ export default function CheckoutPage() {
                 </CardDescription>
               </CardHeader>
 
-                {/* Le sélecteur de devise ici */}
-                <div className="flex justify-center gap-2 -mt-2 mb-6">
-                    {['XOF', 'EUR', 'USD'].map((cur) => (
-                        <button
-                        key={cur}
-                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                            currency === cur
-                            ? 'bg-[#1E3A8A] text-white'
-                            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                        }`}
-                        onClick={() => {
-                            setCurrency(cur)
-                            const newPrice = getPriceForCurrency(cur, planType)
-                            setOriginalPrice(newPrice)
-                            setPrice(newPrice)
-                            setFinalPrice(newPrice)
-                            setSymbol(getCurrencySymbol(cur))
-                        }}
-                        >
-                        {cur === 'XOF' ? 'FCFA' : cur === 'EUR' ? '€' : '$'}
-                        </button>
-                    ))}
-                </div>
+              {/* Sélecteur de devise */}
+              <div className="flex justify-center gap-2 -mt-2 mb-6">
+                {['XOF', 'EUR', 'USD'].map((cur) => (
+                  <button
+                    key={cur}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      currency === cur
+                        ? 'bg-[#1E3A8A] text-white'
+                        : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                    }`}
+                    onClick={() => {
+                      setCurrency(cur)
+                      const newPrice = getPriceForCurrency(cur, planType)
+                      setOriginalPrice(newPrice)
+                      setPrice(newPrice)
+                      setFinalPrice(newPrice)
+                      setSymbol(getCurrencySymbol(cur))
+                    }}
+                  >
+                    {cur === 'XOF' ? 'FCFA' : cur === 'EUR' ? '€' : '$'}
+                  </button>
+                ))}
+              </div>
+
               <CardContent className="space-y-6">
                 {/* Prix */}
                 <div className="text-center p-2 bg-[#1E3A8A]/5 rounded-lg border border-[#1E3A8A]/10">
@@ -345,67 +350,44 @@ export default function CheckoutPage() {
                   )}
                 </div>
 
-                {/* Méthode de paiement */}
-                <div className="space-y-3">
-                  <p className="font-medium text-[#1E3A8A] text-sm">Moyen de paiement</p>
+                {/* Méthode de paiement — FedaPay gère Mobile Money ET Carte bancaire,
+                    quelle que soit la devise choisie (utile pour les clients à l'international) */}
+                <div className="space-y-3 border-t border-gray-200 pt-4">
+                  <p className="font-medium text-[#1E3A8A] text-sm">
+                    Choisissez votre moyen de paiement pour continuer
+                  </p>
 
-                  {(currency === 'XOF' || currency === 'XAF') ? (
-                    <>
-                      <button
-                        className={`w-full p-3 rounded-lg border-2 text-left transition-colors ${
-                          paymentMethod === 'mobile_money'
-                            ? 'border-[#1E3A8A] bg-[#1E3A8A]/5'
-                            : 'border-gray-200 hover:border-[#1E3A8A]/50'
-                        }`}
-                        onClick={() => setPaymentMethod('mobile_money')}
-                      >
-                        <span className="font-medium">📱 Mobile Money</span>
-                        <p className="text-xs text-gray-500">MTN, Orange, Moov</p>
-                      </button>
-                      <button
-                        className={`w-full p-3 rounded-lg border-2 text-left transition-colors ${
-                          paymentMethod === 'card'
-                            ? 'border-[#1E3A8A] bg-[#1E3A8A]/5'
-                            : 'border-gray-200 hover:border-[#1E3A8A]/50'
-                        }`}
-                        onClick={() => setPaymentMethod('card')}
-                      >
-                        <span className="font-medium">💳 Carte bancaire</span>
-                        <p className="text-xs text-gray-500">Visa, Mastercard</p>
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      className={`w-full p-3 rounded-lg border-2 text-left transition-colors ${
-                        paymentMethod === 'paypal'
-                          ? 'border-[#1E3A8A] bg-[#1E3A8A]/5'
-                          : 'border-gray-200 hover:border-[#1E3A8A]/50'
-                      }`}
-                      onClick={() => setPaymentMethod('paypal')}
-                    >
-                      <span className="font-medium">💳 PayPal</span>
-                      <p className="text-xs text-gray-500">Paiement international</p>
-                    </button>
-                  )}
+                  <button
+                    className="w-full p-4 rounded-lg border-2 border-gray-200 text-left transition-colors hover:border-[#1E3A8A]/50 hover:bg-[#1E3A8A]/5 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-between"
+                    onClick={() => handlePayment('mobile_money')}
+                    disabled={submitting}
+                  >
+                    <div>
+                      <span className="font-medium">📱 Mobile Money</span>
+                      <p className="text-xs text-gray-500">MTN, Orange, Moov</p>
+                    </div>
+                    {submittingMethod === 'mobile_money' && (
+                      <Loader2 className="w-5 h-5 animate-spin text-[#1E3A8A]" />
+                    )}
+                  </button>
+
+                  <button
+                    className="w-full p-4 rounded-lg border-2 border-gray-200 text-left transition-colors hover:border-[#1E3A8A]/50 hover:bg-[#1E3A8A]/5 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-between"
+                    onClick={() => handlePayment('card')}
+                    disabled={submitting}
+                  >
+                    <div>
+                      <span className="font-medium">💳 Carte bancaire</span>
+                      <p className="text-xs text-gray-500">Visa, Mastercard</p>
+                    </div>
+                    {submittingMethod === 'card' && (
+                      <Loader2 className="w-5 h-5 animate-spin text-[#1E3A8A]" />
+                    )}
+                  </button>
                 </div>
 
-                <Button
-                  className="w-full bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-semibold py-6 text-lg"
-                  onClick={handlePayment}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Traitement...
-                    </>
-                  ) : (
-                    `Payer ${finalPrice} ${symbol}`
-                  )}
-                </Button>
-
                 <p className="text-center text-xs text-gray-400">
-                  Paiement sécurisé. Vous serez redirigé vers la plateforme de paiement.
+                  Paiement sécurisé via FedaPay. Vous serez redirigé automatiquement.
                 </p>
               </CardContent>
             </Card>
