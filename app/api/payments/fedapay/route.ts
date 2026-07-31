@@ -134,6 +134,8 @@ export async function POST(request: NextRequest) {
         signal: controller.signal,
       })
 
+      clearTimeout(timeoutId)
+
       const createText = await createResponse.text()
       console.error('📦 Réponse brute FedaPay (création):', createText)
 
@@ -156,50 +158,13 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const transactionId = createData.transaction?.id ?? createData.id
-      if (!transactionId) {
-        console.error('❌ Pas d\'ID de transaction dans la réponse FedaPay:', createData)
+      const transaction = createData['v1/transaction'] ?? createData.transaction
+      const transactionId = transaction?.id
+      const paymentUrl = transaction?.payment_url
+
+      if (!transactionId || !paymentUrl) {
+        console.error('❌ Réponse FedaPay inattendue (id ou payment_url manquant):', createData)
         return NextResponse.json({ error: 'Réponse FedaPay inattendue' }, { status: 502 })
-      }
-
-      // ── Étape 2 : générer le lien de paiement (token) ───────────────
-      const tokenResponse = await fetch(`https://api.fedapay.com/v1/transactions/${transactionId}/token`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal,
-      })
-
-      clearTimeout(timeoutId)
-
-      const tokenText = await tokenResponse.text()
-      console.error('📦 Réponse brute FedaPay (token):', tokenText)
-
-      let tokenData
-      try {
-        tokenData = JSON.parse(tokenText)
-      } catch {
-        console.error('❌ Réponse non-JSON (token):', tokenText)
-        return NextResponse.json(
-          { error: 'FedaPay a renvoyé une réponse invalide lors de la génération du lien de paiement' },
-          { status: 502 }
-        )
-      }
-
-      if (!tokenResponse.ok) {
-        console.error('❌ Erreur FedaPay (token):', tokenData)
-        return NextResponse.json(
-          { error: tokenData.message || tokenData.error || 'Erreur FedaPay (génération du lien)' },
-          { status: tokenResponse.status }
-        )
-      }
-
-      const paymentUrl = tokenData.url || tokenData.token_url
-      if (!paymentUrl) {
-        console.error('❌ Pas d\'URL de paiement dans la réponse FedaPay:', tokenData)
-        return NextResponse.json({ error: 'Lien de paiement introuvable dans la réponse FedaPay' }, { status: 502 })
       }
 
       // ✅ Sauvegarder la transaction en base
