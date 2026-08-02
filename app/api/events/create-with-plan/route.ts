@@ -1,20 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
-import { generateTransactionId } from '@/lib/utils/payment'
+import { getPlanMaxGuests, getPriceForCurrency } from '@/lib/utils/currency'
 
 export const dynamic = 'force-dynamic'
 
-const PLANS = {
-  free: { maxGuests: 10, priceFcfa: 0, priceEur: 0 },
-  standard: { maxGuests: 100, priceFcfa: 2000, priceEur: 4.99 },
-  prestige: { maxGuests: 500, priceFcfa: 5000, priceEur: 9.99 },
-  vip: { maxGuests: null, priceFcfa: 10000, priceEur: 16.99 }, // null = illimité
-}
+const VALID_PLANS = ['free', 'standard', 'prestige', 'vip']
 
 export async function POST(request: NextRequest) {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
-  
+
   if (!user) {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
   }
@@ -22,74 +17,51 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const { planType, eventData } = body
 
-  if (!planType || !PLANS[planType as keyof typeof PLANS]) {
+  if (!planType || !VALID_PLANS.includes(planType)) {
     return NextResponse.json({ error: 'Plan invalide' }, { status: 400 })
   }
 
-  const plan = PLANS[planType as keyof typeof PLANS]
+  if (!eventData?.name || !eventData?.date || !eventData?.type) {
+    return NextResponse.json({ error: 'Informations d\'événement incomplètes' }, { status: 400 })
+  }
 
-  // Vérifier si l'utilisateur a déjà un événement
-  const { data: existingEvent } = await supabase
-    .from('events')
-    .select('id')
-    .eq('organizer_id', user.id)
-    .single()
+  // ✅ Règle métier : 1 seul événement Gratuit actif/à venir à la fois.
+  // Les plans payants sont illimités (même règle que le trigger SQL et
+  // que checkout/page.tsx).
+  if (planType === 'free') {
+    const today = new Date().toISOString().split('T')[0]
 
-  if (existingEvent) {
-    return NextResponse.json(
-      { error: 'Vous avez déjà créé un événement. Un seul événement est autorisé dans cette version.' },
-      { status: 400 }
-    )
+    const { data: existingFreeEvent } = await supabase
+      .from('events')
+      .select('id')
+      .eq('organizer_id', user.id)
+      .eq('plan_type', 'free')
+      .eq('status', 'active')
+      .gte('date', today)
+      .maybeSingle()
+
+    if (existingFreeEvent) {
+      return NextResponse.json(
+        { error: 'Vous avez déjà un événement gratuit actif ou à venir. Choisissez un forfait payant pour créer un nouvel événement dès maintenant.' },
+        { status: 400 }
+      )
+    }
   }
 
   try {
-    // Créer le slug
-    const slug = eventData.name
+    const baseSlug = eventData.name
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
 
-    // Si le plan est gratuit → créer l'événement directement
-    if (planType === 'free') {
-      const { data: event, error } = await supabase
-        .from('events')
-        .insert({
-          organizer_id: user.id,
-          name: eventData.name,
-          type: eventData.type,
-          date: eventData.date,
-          time: eventData.time || null,
-          location: eventData.location || null,
-          description: eventData.description || null,
-          slug: slug,
-          cover_image: eventData.cover_image || null,
-          style: eventData.style || 'classique',
-          is_qr_active: false,
-          plan_type: 'free',
-          max_guests: plan.maxGuests,
-          plan_price_fcfa: plan.priceFcfa,
-          plan_price_eur: plan.priceEur,
-          payment_status: 'paid',
-        })
-        .select()
-        .single()
+    // Suffixe aléatoire pour garantir l'unicité du slug
+    const slug = `${baseSlug}-${crypto.randomUUID().slice(0, 6)}`
 
-      if (error) throw error
+    const isFree = planType === 'free'
 
-      return NextResponse.json({
-        success: true,
-        eventId: event.id,
-        isFree: true,
-      })
-    }
-
-    // Pour les plans payants → créer un événement en "pending" + rediriger vers FedaPay
-    const transactionId = generateTransactionId()
-
-    // Créer un événement en attente de paiement
-    const { data: pendingEvent, error: eventError } = await supabase
+    const { data: event, error } = await supabase
       .from('events')
       .insert({
         organizer_id: user.id,
@@ -102,46 +74,30 @@ export async function POST(request: NextRequest) {
         slug: slug,
         cover_image: eventData.cover_image || null,
         style: eventData.style || 'classique',
-        is_qr_active: planType === 'prestige' || planType === 'vip',
-        plan_type: planType,
-        max_guests: plan.maxGuests,
-        plan_price_fcfa: plan.priceFcfa,
-        plan_price_eur: plan.priceEur,
-        payment_status: 'pending',
-        status: 'archived', // Caché tant que le paiement n'est pas confirmé
+        is_qr_active: isFree ? false : (planType === 'prestige' || planType === 'vip'),
+        plan_type: isFree ? 'free' : planType,
+        max_guests: isFree ? getPlanMaxGuests('free') : null, // fixé après paiement pour les plans payants
+        plan_price_fcfa: isFree ? 0 : getPriceForCurrency('XOF', planType),
+        plan_price_eur: isFree ? 0 : getPriceForCurrency('EUR', planType),
+        is_premium: false, // activé par le webhook après paiement confirmé, pour les plans payants
+        payment_status: isFree ? 'paid' : 'pending',
+        status: isFree ? 'active' : 'archived',
       })
       .select()
       .single()
 
-    if (eventError) throw eventError
-
-    // Sauvegarder la transaction en base
-    await supabase
-      .from('payments')
-      .insert({
-        event_id: pendingEvent.id,
-        user_id: user.id,
-        amount: plan.priceFcfa,
-        currency: 'XOF',
-        final_amount: plan.priceFcfa,
-        payment_method: 'mobile_money', // À adapter selon le choix
-        provider: 'fedaPay',
-        transaction_id: transactionId,
-        status: 'pending',
-        provider_response: { transactionId },
-      })
-
-    // Appeler FedaPay pour créer la transaction (à implémenter)
-    // Pour l'instant, on retourne l'ID de l'événement
+    if (error) {
+      console.error('❌ Erreur création événement:', error)
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
 
     return NextResponse.json({
       success: true,
-      eventId: pendingEvent.id,
-      transactionId: transactionId,
-      isFree: false,
+      eventId: event.id,
+      isFree,
     })
-
   } catch (error: any) {
+    console.error('❌ Erreur create-with-plan:', error)
     return NextResponse.json(
       { error: error.message || 'Erreur lors de la création' },
       { status: 500 }

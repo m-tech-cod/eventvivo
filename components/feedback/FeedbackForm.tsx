@@ -17,9 +17,12 @@ export function FeedbackForm({ onSubmit, isLoading = false }: FeedbackFormProps)
   const [hoverRating, setHoverRating] = useState<number>(0)
   const [content, setContent] = useState('')
 
+  const ratingMissing = type === 'rating' && rating === 0
+  const canSubmit = content.trim().length > 0 && !ratingMissing
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!content.trim()) return
+    if (!canSubmit) return
     onSubmit({
       type,
       rating: type === 'rating' ? rating : undefined,
@@ -86,6 +89,9 @@ export function FeedbackForm({ onSubmit, isLoading = false }: FeedbackFormProps)
               </button>
             ))}
           </div>
+          {ratingMissing && (
+            <p className="text-xs text-red-500">Sélectionnez une note avant d'envoyer.</p>
+          )}
         </motion.div>
       )}
 
@@ -113,7 +119,7 @@ export function FeedbackForm({ onSubmit, isLoading = false }: FeedbackFormProps)
       <Button
         type="submit"
         className="w-full bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white transition-all"
-        disabled={isLoading || !content.trim()}
+        disabled={isLoading || !canSubmit}
       >
         <Send className="w-4 h-4 mr-2" />
         {isLoading ? 'Envoi...' : 'Envoyer le feedback'}

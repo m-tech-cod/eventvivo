@@ -14,12 +14,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ArrowLeft, Loader2, Sparkles } from 'lucide-react'
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
 import { AnimatedSection } from '@/components/ui/animations'
+import { getPlanMaxGuests } from '@/lib/utils/currency'
 
-const PLANS = {
-  free: { label: 'Gratuit', maxGuests: 10, styles: 1, priceFcfa: 0, priceEur: 0, priceUsd: 0 },
-  standard: { label: 'Standard', maxGuests: 100, styles: 5, priceFcfa: 2000, priceEur: 9.99, priceUsd: 9.99 },
-  prestige: { label: 'Prestige', maxGuests: 500, styles: 50, priceFcfa: 5000, priceEur: 19.99, priceUsd: 19.99 },
-  vip: { label: 'VIP / Illimité', maxGuests: Infinity, styles: 50, priceFcfa: 10000, priceEur: 39.99, priceUsd: 39.99 },
+const PLAN_LABELS: Record<string, string> = {
+  free: 'Gratuit',
+  standard: 'Standard',
+  prestige: 'Prestige',
+  vip: 'VIP / Illimité',
 }
 
 const ALL_STYLES = [
@@ -41,6 +42,7 @@ export default function EditEventPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [redirectingToPayment, setRedirectingToPayment] = useState(false)
   const [event, setEvent] = useState<any>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
@@ -72,7 +74,7 @@ export default function EditEventPage() {
       }
 
       setEvent(data)
-      
+
       let allowedStyle = data.style || 'classique'
       if (data.plan_type === 'free' && data.style !== 'classique') {
         allowedStyle = 'classique'
@@ -105,17 +107,17 @@ export default function EditEventPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    
+
     if (file.size > 5 * 1024 * 1024) {
       setError('L\'image ne doit pas dépasser 5 Mo')
       return
     }
-    
+
     if (!file.type.startsWith('image/')) {
       setError('Le fichier doit être une image')
       return
     }
-    
+
     setCoverFile(file)
     setPreviewUrl(URL.createObjectURL(file))
   }
@@ -146,48 +148,59 @@ export default function EditEventPage() {
         }
       }
 
-      // ✅ Vérifier si le plan change vers un plan payant
       const oldPlanType = event?.plan_type
       const newPlanType = formData.plan_type
       const isUpgradeToPaid = oldPlanType !== newPlanType && newPlanType !== 'free'
 
-      const plan = PLANS[formData.plan_type as keyof typeof PLANS]
-      const isFreePlan = formData.plan_type === 'free'
+      // Champs de contenu, toujours modifiables immédiatement
+      const contentUpdate: Record<string, any> = {
+        name: formData.name,
+        type: formData.type,
+        date: formData.date,
+        time: formData.time || null,
+        location: formData.location || null,
+        description: formData.description || null,
+        cover_image: coverImageUrl,
+        style: formData.style,
+        is_qr_active: formData.is_qr_active || false,
+      }
 
-      // 1. Mettre à jour l'événement
-      const { error: updateError } = await supabase
-        .from('events')
-        .update({
-          name: formData.name,
-          type: formData.type,
-          date: formData.date,
-          time: formData.time || null,
-          location: formData.location || null,
-          description: formData.description || null,
-          cover_image: coverImageUrl,
-          style: formData.style,
-          plan_type: formData.plan_type,
-          is_qr_active: formData.is_qr_active || false,
-          is_premium: !isFreePlan,
-          max_guests: plan.maxGuests,
-          plan_price_fcfa: plan.priceFcfa,
-          plan_price_eur: plan.priceEur,
-          payment_status: isUpgradeToPaid ? 'pending' : 'paid',
-        })
-        .eq('id', eventId)
-
-      if (updateError) throw updateError
-
-      // 2. Si upgrade vers un plan payant → rediriger vers paiement
       if (isUpgradeToPaid) {
+        // ⚠️ IMPORTANT : on ne change PAS plan_type / max_guests / is_premium
+        // ici. Ces champs ne doivent être activés qu'après confirmation du
+        // paiement par le webhook FedaPay — sinon un utilisateur pourrait
+        // obtenir les avantages d'un forfait payant sans jamais payer en
+        // cliquant "Enregistrer" puis en abandonnant la page de paiement.
+        const { error: updateError } = await supabase
+          .from('events')
+          .update(contentUpdate)
+          .eq('id', eventId)
+
+        if (updateError) throw updateError
+
         setSuccess(true)
+        setRedirectingToPayment(true)
         setTimeout(() => {
           router.push(`/fr/events/checkout?plan=${newPlanType}&upgrade=${eventId}`)
         }, 1000)
         return
       }
 
-      // 3. Sinon, succès et retour au dashboard
+      // Pas de changement de plan payant : on peut mettre à jour plan_type
+      // directement (cas du downgrade vers gratuit, ou aucun changement de plan)
+      const { error: updateError } = await supabase
+        .from('events')
+        .update({
+          ...contentUpdate,
+          plan_type: newPlanType,
+          is_premium: newPlanType !== 'free',
+          max_guests: getPlanMaxGuests(newPlanType),
+          payment_status: 'paid',
+        })
+        .eq('id', eventId)
+
+      if (updateError) throw updateError
+
       setSuccess(true)
       setTimeout(() => router.push('/fr/dashboard'), 1500)
 
@@ -197,11 +210,13 @@ export default function EditEventPage() {
     }
   }
 
-  const currentPlan = PLANS[formData.plan_type as keyof typeof PLANS] || PLANS.free
+  const currentPlanLabel = PLAN_LABELS[formData.plan_type] || 'Gratuit'
+  const currentPlanMaxGuests = getPlanMaxGuests(formData.plan_type) // 0 = illimité
   const isFreePlan = formData.plan_type === 'free'
   const isVipPlan = formData.plan_type === 'vip'
-  const availableStyles = isFreePlan 
-    ? ALL_STYLES.filter(s => !s.premium) 
+  const canUseQr = formData.plan_type === 'prestige' || formData.plan_type === 'vip'
+  const availableStyles = isFreePlan
+    ? ALL_STYLES.filter(s => !s.premium)
     : ALL_STYLES
 
   if (loading) {
@@ -242,8 +257,8 @@ export default function EditEventPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               className="mb-4 text-white hover:bg-white/10 backdrop-blur-sm"
               onClick={() => router.push('/fr/dashboard')}
             >
@@ -264,10 +279,10 @@ export default function EditEventPage() {
               </CardHeader>
               <CardContent>
                 {success && (
-                  <Alert className={`mb-4 ${formData.plan_type !== event?.plan_type && formData.plan_type !== 'free' ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
-                    <AlertDescription className={formData.plan_type !== event?.plan_type && formData.plan_type !== 'free' ? 'text-blue-700' : 'text-green-700'}>
-                      {formData.plan_type !== event?.plan_type && formData.plan_type !== 'free' 
-                        ? '🔄 Événement mis à jour ! Redirection vers la page de paiement...' 
+                  <Alert className={`mb-4 ${redirectingToPayment ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
+                    <AlertDescription className={redirectingToPayment ? 'text-blue-700' : 'text-green-700'}>
+                      {redirectingToPayment
+                        ? '🔄 Informations enregistrées ! Redirection vers la page de paiement...'
                         : '✅ Événement modifié avec succès ! Redirection...'}
                     </AlertDescription>
                   </Alert>
@@ -284,13 +299,13 @@ export default function EditEventPage() {
                     <div>
                       <p className="text-sm text-gray-500">Forfait actuel</p>
                       <p className="font-semibold text-[#1E3A8A]">
-                        {currentPlan.label}
+                        {currentPlanLabel}
                         {isVipPlan && ' 👑'}
                       </p>
                       <p className="text-xs text-gray-400">
-                        {currentPlan.maxGuests === Infinity 
-                          ? '♾️ Invités illimités' 
-                          : `👥 ${currentPlan.maxGuests} invités maximum`}
+                        {currentPlanMaxGuests === 0
+                          ? '♾️ Invités illimités'
+                          : `👥 ${currentPlanMaxGuests} invités maximum`}
                       </p>
                     </div>
                     {!isVipPlan && (
@@ -342,7 +357,7 @@ export default function EditEventPage() {
                       <option value="ago">🥁 Agô</option>
                       <option value="formation">📚 Formation</option>
                       <option value="lancement">🚀 Lancement de produit</option>
-                      <option value="conference">🎤 Conférence</option> 
+                      <option value="conference">🎤 Conférence</option>
                       <option value="autre">📌 Autre</option>
                     </select>
                   </div>
@@ -411,9 +426,9 @@ export default function EditEventPage() {
                     <p className="text-xs text-gray-500">Format recommandé : 1200×630px (16:9) - Max 5 Mo</p>
                     {previewUrl && (
                       <div className="mt-2 relative w-full aspect-[16/9] rounded-lg overflow-hidden border border-gray-200">
-                        <img 
-                          src={previewUrl} 
-                          alt="Aperçu" 
+                        <img
+                          src={previewUrl}
+                          alt="Aperçu"
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -449,8 +464,8 @@ export default function EditEventPage() {
                       })}
                     </div>
                     <p className="text-xs text-gray-500">
-                      {isFreePlan 
-                        ? 'Passez à Standard, Prestige ou VIP pour débloquer plus de styles' 
+                      {isFreePlan
+                        ? 'Passez à Standard, Prestige ou VIP pour débloquer plus de styles'
                         : `${availableStyles.length} styles disponibles`}
                     </p>
                   </div>
@@ -464,20 +479,22 @@ export default function EditEventPage() {
                         checked={formData.is_qr_active}
                         onChange={(e) => {
                           const checked = e.target.checked
-                          setFormData({ 
-                            ...formData, 
+                          setFormData({
+                            ...formData,
                             is_qr_active: checked,
-                            plan_type: checked && isFreePlan ? 'standard' : formData.plan_type
+                            // Le QR Code est une fonctionnalité Prestige/VIP,
+                            // pas Standard (cf. PricingSection.tsx)
+                            plan_type: checked && !canUseQr ? 'prestige' : formData.plan_type,
                           })
                         }}
                         className="w-5 h-5 text-[#1E3A8A] border-gray-300 rounded focus:ring-[#1E3A8A] cursor-pointer"
-                        disabled={isFreePlan}
+                        disabled={!canUseQr}
                       />
-                      <Label htmlFor="is_qr_active" className={`cursor-pointer font-normal ${isFreePlan ? 'opacity-50' : ''}`}>
+                      <Label htmlFor="is_qr_active" className={`cursor-pointer font-normal ${!canUseQr ? 'opacity-50' : ''}`}>
                         <span className="font-medium text-[#1E3A8A]">Activer le contrôle par QR Code</span>
                         <p className="text-xs text-gray-500 font-normal">
-                          {isFreePlan 
-                            ? 'Disponible à partir du forfait Standard' 
+                          {!canUseQr
+                            ? 'Disponible à partir du forfait Prestige'
                             : 'QR Code activé pour tous vos invités'}
                         </p>
                       </Label>
@@ -493,10 +510,9 @@ export default function EditEventPage() {
                       onChange={(e) => {
                         const newPlan = e.target.value
                         const oldPlan = formData.plan_type
-                        
-                        // ✅ Confirmation avant upgrade payant
+
                         if (oldPlan !== newPlan && newPlan !== 'free') {
-                          if (!confirm(`Passer au forfait ${PLANS[newPlan as keyof typeof PLANS].label} entraînera un paiement. Continuer ?`)) {
+                          if (!confirm(`Passer au forfait ${PLAN_LABELS[newPlan]} entraînera un paiement. Continuer ?`)) {
                             return
                           }
                         }
@@ -511,8 +527,8 @@ export default function EditEventPage() {
                     </select>
                     <p className="text-xs text-gray-500">
                       {formData.plan_type !== event?.plan_type && formData.plan_type !== 'free'
-                        ? '⚠️ Le passage à un forfait payant nécessite un paiement.'
-                        : formData.plan_type !== event?.plan_type 
+                        ? '⚠️ Le passage à un forfait payant nécessite un paiement avant activation.'
+                        : formData.plan_type !== event?.plan_type
                         ? '⚠️ Le changement de forfait sera appliqué après sauvegarde.'
                         : ''}
                     </p>

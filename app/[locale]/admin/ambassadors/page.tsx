@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,7 +13,6 @@ import { AnimatedSection, staggerItem, StaggeredContainer } from '@/components/u
 
 export default function AdminAmbassadorsPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [ambassadors, setAmbassadors] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -32,49 +30,57 @@ export default function AdminAmbassadorsPage() {
 
   useEffect(() => {
     const fetchAmbassadors = async () => {
-      const { data } = await supabase
-        .from('ambassadors')
-        .select('*')
-        .order('created_at', { ascending: false })
+      const response = await fetch('/api/ambassadors')
+      const result = await response.json()
 
-      setAmbassadors(data || [])
+      if (!response.ok) {
+        // Accès refusé (non-admin) ou non authentifié : retour au dashboard
+        router.push('/fr/dashboard')
+        return
+      }
+
+      setAmbassadors(result.data || [])
       setLoading(false)
     }
 
     fetchAmbassadors()
-  }, [supabase])
+  }, [router])
+
+  const [createError, setCreateError] = useState<string | null>(null)
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
+    setCreateError(null)
 
-    const insertData = {
-      ...formData,
-      status: 'active',
-      expires_at: formData.expires_at || null,
+    const response = await fetch('/api/ambassadors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok || !result.success) {
+      setCreateError(result.error || 'Erreur lors de la création')
+      setSubmitting(false)
+      return
     }
 
-    const { error } = await supabase
-      .from('ambassadors')
-      .insert(insertData)
+    setShowForm(false)
+    setFormData({
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      promo_code: '',
+      commission_rate: 10,
+      expires_at: '',
+    })
 
-    if (!error) {
-      setShowForm(false)
-      setFormData({
-        first_name: '',
-        last_name: '',
-        email: '',
-        phone: '',
-        promo_code: '',
-        commission_rate: 10,
-        expires_at: '',
-      })
-      const { data: newData } = await supabase
-        .from('ambassadors')
-        .select('*')
-        .order('created_at', { ascending: false })
-      setAmbassadors(newData || [])
-    }
+    const listResponse = await fetch('/api/ambassadors')
+    const listResult = await listResponse.json()
+    setAmbassadors(listResult.data || [])
     setSubmitting(false)
   }
 
@@ -221,6 +227,12 @@ export default function AdminAmbassadorsPage() {
                           Laissez vide pour une durée illimitée.
                         </p>
                       </div>
+
+                      {createError && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                          ❌ {createError}
+                        </div>
+                      )}
 
                       <Button
                         type="submit"

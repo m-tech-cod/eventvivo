@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -15,8 +14,7 @@ import { FeedbackForm } from '@/components/feedback/FeedbackForm'
 export default function FeedbackPage() {
   const { user } = useAuth()
   const router = useRouter()
-  const supabase = createClient()
-  
+
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -38,17 +36,21 @@ export default function FeedbackPage() {
     }
 
     try {
-      const { error } = await supabase
-        .from('feedbacks')
-        .insert({
-          user_id: user.id,
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           type: data.type,
           rating: data.type === 'rating' ? data.rating : null,
           content: data.content,
-          status: 'new',
-        })
+        }),
+      })
 
-      if (error) throw error
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Une erreur est survenue')
+      }
 
       setSubmitted(true)
       setTimeout(() => router.push('/fr/dashboard'), 2000)

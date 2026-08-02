@@ -33,6 +33,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
 
   const [guestName, setGuestName] = useState('')
   const [guestPhone, setGuestPhone] = useState('')
+  const [infoCertified, setInfoCertified] = useState(false)
   const [guests, setGuests] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [lookingUp, setLookingUp] = useState(false)
@@ -128,6 +129,11 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
   const handleRSVP = async (status: string) => {
     if (!guestName.trim() || !guestPhone.trim()) {
       setError('Merci de renseigner votre nom et votre téléphone avant de répondre.')
+      return
+    }
+
+    if (!infoCertified) {
+      setError('Merci de confirmer l\'exactitude de vos informations avant de répondre.')
       return
     }
 
@@ -438,10 +444,13 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {/* Identification */}
+                  {/* Émargement */}
+                  <p className="text-sm font-medium text-[#1E3A8A] mb-3">
+                    ✍️ Signez votre présence
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                     <div className="space-y-1">
-                      <Label htmlFor="guestName" className="text-sm text-gray-700">Votre nom *</Label>
+                      <Label htmlFor="guestName" className="text-sm text-gray-700">Nom et prénom *</Label>
                       <Input
                         id="guestName"
                         value={guestName}
@@ -478,6 +487,18 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                     </p>
                   )}
 
+                  <label className="flex items-start gap-2 mb-4 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={infoCertified}
+                      onChange={(e) => setInfoCertified(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 text-[#1E3A8A] border-gray-300 rounded focus:ring-[#1E3A8A] cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-600">
+                      Je certifie ces informations exactes
+                    </span>
+                  </label>
+
                   <div className="flex flex-col sm:flex-row gap-4">
                     <motion.div
                       className="flex-1"
@@ -487,7 +508,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                       <Button
                         className="w-full bg-[#10B981] hover:bg-[#10B981]/90 text-white py-6 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group"
                         onClick={() => handleRSVP('attending')}
-                        disabled={submitting}
+                        disabled={submitting || !infoCertified}
                       >
                         <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                         <Users className="w-5 h-5 mr-2" />
@@ -503,7 +524,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
                       <Button
                         className="w-full bg-red-500 hover:bg-red-600 text-white py-6 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 relative overflow-hidden group"
                         onClick={() => handleRSVP('declined')}
-                        disabled={submitting}
+                        disabled={submitting || !infoCertified}
                       >
                         <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                         <XCircle className="w-5 h-5 mr-2" />

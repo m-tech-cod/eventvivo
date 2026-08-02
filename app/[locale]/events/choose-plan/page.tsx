@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { createClient } from '@/lib/supabase/client'
@@ -70,6 +70,8 @@ export default function ChoosePlanPage() {
   const { user } = useAuth()
   const router = useRouter()
   const supabase = createClient()
+  const searchParams = useSearchParams()
+  const upgradeEventId = searchParams.get('upgrade') // présent si on vient de dashboard/edit pour upgrader un événement existant
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -97,7 +99,11 @@ export default function ChoosePlanPage() {
         return
       }
 
-      router.push(`/fr/events/checkout?plan=${plan.id}`)
+      const checkoutUrl = upgradeEventId
+        ? `/fr/events/checkout?plan=${plan.id}&upgrade=${upgradeEventId}`
+        : `/fr/events/checkout?plan=${plan.id}`
+
+      router.push(checkoutUrl)
 
     } catch (err: any) {
       setError(err.message)
@@ -125,10 +131,12 @@ export default function ChoosePlanPage() {
             className="text-center mb-8"
           >
             <h1 className="text-3xl md:text-4xl font-bold text-white font-poppins drop-shadow-lg">
-              Choisissez votre forfait
+              {upgradeEventId ? 'Passer à un forfait supérieur' : 'Choisissez votre forfait'}
             </h1>
             <p className="text-white/80 mt-2 drop-shadow">
-              Sélectionnez le plan qui correspond à votre événement
+              {upgradeEventId
+                ? 'Débloquez plus de fonctionnalités pour votre événement'
+                : 'Sélectionnez le plan qui correspond à votre événement'}
             </p>
           </motion.div>
 
@@ -156,7 +164,7 @@ export default function ChoosePlanPage() {
 
           {/* Grille des forfaits */}
           <StaggeredContainer className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {plans.map((plan, index) => {
+            {plans.filter((p) => !upgradeEventId || p.id !== 'free').map((plan, index) => {
               const isSelected = selectedPlan === plan.id
               const { price, symbol } = getPrice(plan)
 

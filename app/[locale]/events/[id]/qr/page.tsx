@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Download, CheckCircle2, Clock, Users } from 'lucide-react'
+import Link from 'next/link'
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
 import { AnimatedSection, StaggeredContainer, staggerItem } from '@/components/ui/animations'
 
@@ -127,27 +128,6 @@ export default function GuestQRDashboardPage() {
     )
   }
 
-  if (!event.is_qr_active) {
-    return (
-      <BackgroundImage src={getEventBackground(event)} overlayOpacity={0.4} animate="zoom">
-        <div className="flex-1 flex items-center justify-center px-4">
-          <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-2xl max-w-md">
-            <CardContent className="text-center py-12">
-              <div className="text-5xl mb-4">📱</div>
-              <h2 className="text-xl font-semibold text-[#1E3A8A] mb-2">QR Code désactivé</h2>
-              <p className="text-gray-500">
-                Le contrôle d'accès par QR Code n'est pas activé pour cet événement (disponible en plan Prestige et VIP).
-              </p>
-              <Button className="mt-4 bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white" onClick={() => router.push('/fr/dashboard')}>
-                Retour au dashboard
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </BackgroundImage>
-    )
-  }
-
   return (
     <BackgroundImage src={getEventBackground(event)} overlayOpacity={0.35} animate="zoom" className="min-h-screen py-10">
       <div className="flex-1 overflow-y-auto px-4">
@@ -155,19 +135,36 @@ export default function GuestQRDashboardPage() {
           <AnimatedSection>
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-white font-poppins drop-shadow-lg mb-2">
-                Invités confirmés & QR Codes
+                Invités confirmés{event.is_qr_active ? ' & QR Codes' : ''}
               </h1>
               <p className="text-white/80 drop-shadow">{event.name}</p>
               <div className="flex justify-center gap-4 mt-4 text-white/90 drop-shadow text-sm">
                 <span className="flex items-center gap-1.5">
                   <Users className="w-4 h-4" /> {guests.length} confirmé{guests.length > 1 ? 's' : ''}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" /> {guests.filter(g => g.scannedAt).length} déjà entré{guests.filter(g => g.scannedAt).length > 1 ? 's' : ''}
-                </span>
+                {event.is_qr_active && (
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> {guests.filter(g => g.scannedAt).length} déjà entré{guests.filter(g => g.scannedAt).length > 1 ? 's' : ''}
+                  </span>
+                )}
               </div>
             </div>
           </AnimatedSection>
+
+          {!event.is_qr_active && (
+            <AnimatedSection>
+              <div className="mb-6 flex items-center justify-between gap-3 bg-white/95 backdrop-blur-sm rounded-lg px-4 py-3 text-sm">
+                <span className="text-gray-600">
+                  💡 Le contrôle d'accès par QR Code individuel n'est pas activé sur ce plan.
+                </span>
+                <Link href={`/fr/events/choose-plan?upgrade=${event.id}`}>
+                  <Button size="sm" className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] shrink-0">
+                    Passer à Prestige
+                  </Button>
+                </Link>
+              </div>
+            </AnimatedSection>
+          )}
 
           {guests.length === 0 ? (
             <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-2xl">
@@ -190,38 +187,46 @@ export default function GuestQRDashboardPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      <div className="flex justify-center">
-                        {guest.qrUrl ? (
-                          <img src={guest.qrUrl} alt={`QR de ${guest.name}`} className="w-32 h-32" />
-                        ) : (
-                          <div className="w-32 h-32 flex items-center justify-center text-xs text-gray-400 border rounded">
-                            QR non généré
+                      <p className="text-xs text-gray-400">
+                        Répondu le {new Date(guest.respondedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+
+                      {event.is_qr_active && (
+                        <>
+                          <div className="flex justify-center">
+                            {guest.qrUrl ? (
+                              <img src={guest.qrUrl} alt={`QR de ${guest.name}`} className="w-32 h-32" />
+                            ) : (
+                              <div className="w-32 h-32 flex items-center justify-center text-xs text-gray-400 border rounded">
+                                QR non généré
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
 
-                      {guest.scannedAt ? (
-                        <div className="flex items-center gap-2 justify-center text-xs text-green-700 bg-green-50 rounded-full py-1.5 px-3">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Entré à {new Date(guest.scannedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 justify-center text-xs text-gray-500 bg-gray-50 rounded-full py-1.5 px-3">
-                          <Clock className="w-3.5 h-3.5" />
-                          Pas encore scanné
-                        </div>
-                      )}
+                          {guest.scannedAt ? (
+                            <div className="flex items-center gap-2 justify-center text-xs text-green-700 bg-green-50 rounded-full py-1.5 px-3">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Entré à {new Date(guest.scannedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 justify-center text-xs text-gray-500 bg-gray-50 rounded-full py-1.5 px-3">
+                              <Clock className="w-3.5 h-3.5" />
+                              Pas encore scanné
+                            </div>
+                          )}
 
-                      {guest.qrUrl && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full text-[#1E3A8A] border-[#1E3A8A]/30"
-                          onClick={() => downloadQRCode(guest.qrUrl!, guest.name)}
-                        >
-                          <Download className="w-3.5 h-3.5 mr-1.5" />
-                          Télécharger
-                        </Button>
+                          {guest.qrUrl && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full text-[#1E3A8A] border-[#1E3A8A]/30"
+                              onClick={() => downloadQRCode(guest.qrUrl!, guest.name)}
+                            >
+                              <Download className="w-3.5 h-3.5 mr-1.5" />
+                              Télécharger
+                            </Button>
+                          )}
+                        </>
                       )}
                     </CardContent>
                   </Card>

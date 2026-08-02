@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
-import { generateReceiptPDF } from '@/lib/pdf/receipt'
+import { generateReceiptPDF, generateReceiptNumber } from '@/lib/pdf/receipt'
 import { sendReceiptEmail } from '@/lib/email/sendReceipt'
-import { generateReceiptNumber } from '@/lib/pdf/receipt'
+import { getPlanMaxGuests } from '@/lib/utils/currency'
 import crypto from 'crypto'
 
 export const dynamic = 'force-dynamic'
@@ -16,11 +16,11 @@ const PLAN_NAMES: Record<string, string> = {
 
 export async function POST(request: NextRequest) {
   const supabase = await createServerClient()
-  
+
   try {
     // ✅ 1. Lire le corps brut pour la signature
     const rawBody = await request.text()
-    
+
     // ✅ 2. Récupérer et vérifier la signature
     const signature = request.headers.get('x-fedapay-signature')
     if (!signature) {
@@ -34,7 +34,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
     }
 
-    // ✅ 3. Vérifier la signature avec HMAC-SHA256
     const expectedSignature = crypto
       .createHmac('sha256', secret)
       .update(rawBody)
@@ -45,24 +44,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Signature invalide' }, { status: 401 })
     }
 
-    // ✅ 4. Signature valide → parser le payload
+    // ✅ 3. Signature valide → parser le payload
+    // Le format FedaPay est { name: "transaction.approved", entity: {...} },
+    // pas { transaction: {...} }.
     const body = JSON.parse(rawBody)
-    const transaction = body.transaction || body
+    const eventName = body.name as string | undefined
+    const transaction = body.entity
 
     if (!transaction || !transaction.id) {
-      return NextResponse.json(
-        { error: 'Transaction invalide' },
-        { status: 400 }
-      )
+      console.error('❌ Payload webhook inattendu:', body)
+      return NextResponse.json({ error: 'Transaction invalide' }, { status: 400 })
     }
 
-    // ✅ 5. Vérifier que le statut est approuvé
-    if (transaction.status !== 'approved' && transaction.status !== 'completed') {
-      return NextResponse.json({ success: true, message: 'Transaction non approuvée' })
+    // ✅ 4. Ne traiter que les transactions approuvées
+    const isApproved = eventName === 'transaction.approved' || transaction.status === 'approved'
+    if (!isApproved) {
+      return NextResponse.json({ success: true, message: 'Événement ignoré (non approuvé)' })
     }
 
-    // ✅ 6. Récupérer le paiement avec verrouillage pour éviter les doublons
-    // Utiliser une transaction pour éviter les traitements en parallèle
+    // ✅ 5. Récupérer le paiement en attente correspondant
     const { data: payment, error: paymentError } = await supabase
       .from('payments')
       .select(`
@@ -71,17 +71,11 @@ export async function POST(request: NextRequest) {
           id,
           name,
           slug,
-          organizer_id,
-          plan_type,
-          profiles (
-            first_name,
-            last_name,
-            email
-          )
+          plan_type
         )
       `)
       .eq('transaction_id', transaction.id)
-      .eq('status', 'pending') // Ne traiter que les paiements en attente
+      .eq('status', 'pending')
       .single()
 
     if (paymentError || !payment) {
@@ -92,18 +86,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const event = payment.events
-    const organizer = event?.profiles
+    // ✅ 6. Récupérer l'organisateur directement via payment.user_id
+    // (indépendant de l'existence d'un événement — nécessaire pour le cas
+    // d'un nouvel événement pas encore créé, où payment.event_id est NULL)
+    const { data: organizer, error: organizerError } = await supabase
+      .from('profiles')
+      .select('id, first_name, last_name, email')
+      .eq('id', payment.user_id)
+      .single()
 
-    if (!event || !organizer) {
-      console.error('Événement ou organisateur non trouvé')
-      return NextResponse.json(
-        { error: 'Données manquantes' },
-        { status: 404 }
-      )
+    if (organizerError || !organizer) {
+      console.error('Organisateur non trouvé:', organizerError)
+      return NextResponse.json({ error: 'Organisateur non trouvé' }, { status: 404 })
     }
 
-    // ✅ 7. Mettre à jour le paiement
+    const event = payment.events // peut être null si l'événement n'est pas encore créé
+
+    // ✅ 7. Marquer le paiement comme complété
     const { error: updatePaymentError } = await supabase
       .from('payments')
       .update({
@@ -115,42 +114,67 @@ export async function POST(request: NextRequest) {
 
     if (updatePaymentError) {
       console.error('Erreur mise à jour paiement:', updatePaymentError)
-      // On continue quand même car l'événement peut être mis à jour
     }
 
-    // ✅ 8. Mettre à jour l'événement
-    const planName = PLAN_NAMES[event.plan_type] || event.plan_type
-    const isFreePlan = event.plan_type === 'free'
+    // ✅ 7bis. Programme ambassadeur : verrouille le parrain (une seule fois,
+    // à la toute première confirmation de paiement avec un code promo) et
+    // crédite la commission de l'ambassadeur sur CE paiement, qu'il s'agisse
+    // du premier achat (avec réduction) ou d'un achat suivant (sans
+    // réduction, mais toujours avec commission).
+    if (payment.ambassador_id) {
+      const { data: currentProfile } = await supabase
+        .from('profiles')
+        .select('referred_by_ambassador_id')
+        .eq('id', payment.user_id)
+        .maybeSingle()
 
-    await supabase
-      .from('events')
-      .update({
-        payment_status: 'paid',
-        status: 'active',
-        is_premium: !isFreePlan,
-      })
-      .eq('id', event.id)
+      if (currentProfile && !currentProfile.referred_by_ambassador_id) {
+        await supabase
+          .from('profiles')
+          .update({ referred_by_ambassador_id: payment.ambassador_id })
+          .eq('id', payment.user_id)
+      }
 
-    // ✅ 9. Créer l'invitation si elle n'existe pas
-    const { data: existingInvitation } = await supabase
-      .from('invitations')
-      .select('id')
-      .eq('event_id', event.id)
-      .eq('recipient_name', 'Invité')
-      .maybeSingle()
+      const { data: ambassador } = await supabase
+        .from('ambassadors')
+        .select('commission_rate, total_earned')
+        .eq('id', payment.ambassador_id)
+        .maybeSingle()
 
-    if (!existingInvitation) {
+      if (ambassador) {
+        const commission = Math.round(
+          (payment.final_amount || payment.amount) * (ambassador.commission_rate / 100)
+        )
+        await supabase
+          .from('ambassadors')
+          .update({ total_earned: (ambassador.total_earned || 0) + commission })
+          .eq('id', payment.ambassador_id)
+      }
+    }
+
+    // ✅ 8. Activer l'événement — uniquement s'il existe déjà (upgrade d'un
+    // événement existant via premium/page.tsx). Si event_id est NULL, c'est
+    // un paiement pour un événement pas encore créé (checkout/page.tsx) :
+    // le paiement reste marqué 'completed' et sera rattaché à l'événement
+    // au moment de sa création (voir note ci-dessous).
+    if (event) {
       await supabase
-        .from('invitations')
-        .insert({
-          event_id: event.id,
-          recipient_name: 'Invité',
-          unique_link: `inv-${event.slug}`,
-          status: 'sent',
+        .from('events')
+        .update({
+          payment_status: 'paid',
+          status: 'active',
+          plan_type: payment.plan_type,
+          is_premium: payment.plan_type !== 'free',
+          max_guests: getPlanMaxGuests(payment.plan_type),
         })
+        .eq('id', event.id)
+    } else {
+      console.log('ℹ️ Paiement complété pour un événement pas encore créé (event_id NULL). user_id:', payment.user_id, 'plan_type:', payment.plan_type)
     }
 
-    // ✅ 10. Générer le reçu PDF et envoyer l'email
+    // ✅ 9. Générer le reçu PDF et envoyer l'email (indépendant de l'existence
+    // de l'événement)
+    const planName = PLAN_NAMES[payment.plan_type] || payment.plan_type
     const receiptNumber = generateReceiptNumber()
     const currency = payment.currency || 'XOF'
 
@@ -160,7 +184,7 @@ export async function POST(request: NextRequest) {
         date: new Date().toISOString(),
         customerName: `${organizer.first_name} ${organizer.last_name}`,
         customerEmail: organizer.email,
-        eventId: event.id,
+        eventId: event?.id || null,
         planName: planName,
         planPrice: payment.final_amount || payment.amount,
         currency: currency,
@@ -171,7 +195,7 @@ export async function POST(request: NextRequest) {
       await sendReceiptEmail({
         to: organizer.email,
         customerName: `${organizer.first_name} ${organizer.last_name}`,
-        eventName: event.name,
+        eventName: event?.name || 'Nouvel événement Eventvivo',
         pdfBuffer,
         receiptNumber,
       })
@@ -180,25 +204,22 @@ export async function POST(request: NextRequest) {
       // On ne bloque pas le webhook si l'email échoue
     }
 
-    // ✅ 11. Log de sécurité
+    // ✅ 10. Log de sécurité
     await supabase.from('security_logs').insert({
       event_type: 'payment_webhook_success',
       user_id: organizer.id,
       ip_address: request.headers.get('x-forwarded-for') || 'unknown',
       details: {
         transaction_id: transaction.id,
-        event_id: event.id,
+        event_id: event?.id || null,
         amount: payment.amount,
+        plan_type: payment.plan_type,
       },
     })
 
     return NextResponse.json({ success: true })
-
   } catch (error) {
     console.error('❌ Erreur webhook:', error)
-    return NextResponse.json(
-      { error: 'Erreur interne du serveur' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Erreur interne du serveur' }, { status: 500 })
   }
 }

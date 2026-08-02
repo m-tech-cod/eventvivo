@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { CheckCircle, Clock, AlertCircle, ArrowLeft } from 'lucide-react'
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
 import { AnimatedSection, staggerItem, StaggeredContainer } from '@/components/ui/animations'
@@ -26,33 +26,59 @@ function Badge({ children, variant = 'default', className = '' }: { children: Re
 
 export default function AdminFeedbackPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [feedbacks, setFeedbacks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchFeedbacks = async () => {
-      const { data } = await supabase
-        .from('feedbacks')
-        .select('*, profiles(first_name, last_name, email)')
-        .order('created_at', { ascending: false })
+      const response = await fetch('/api/feedback')
+      const result = await response.json()
 
-      setFeedbacks(data || [])
+      if (!response.ok) {
+        // Non authentifié ou pas admin : retour au dashboard
+        router.push('/fr/dashboard')
+        return
+      }
+
+      setFeedbacks(result.data || [])
       setLoading(false)
     }
 
     fetchFeedbacks()
-  }, [supabase])
+  }, [router])
 
   const updateStatus = async (id: string, status: string) => {
-    await supabase
-      .from('feedbacks')
-      .update({ status })
-      .eq('id', id)
+    setError(null)
+    setUpdatingId(id)
 
-    setFeedbacks(feedbacks.map(f =>
-      f.id === id ? { ...f, status } : f
-    ))
+    // Sauvegarde l'état précédent pour pouvoir l'annuler en cas d'échec
+    const previousFeedbacks = feedbacks
+
+    // Mise à jour optimiste de l'affichage
+    setFeedbacks(feedbacks.map(f => f.id === id ? { ...f, status } : f))
+
+    try {
+      const response = await fetch(`/api/feedback/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        // Échec réel : on annule la mise à jour optimiste
+        setFeedbacks(previousFeedbacks)
+        setError(result.error || 'Impossible de mettre à jour le statut')
+      }
+    } catch (err: any) {
+      setFeedbacks(previousFeedbacks)
+      setError('Erreur réseau, veuillez réessayer')
+    } finally {
+      setUpdatingId(null)
+    }
   }
 
   const getStatusBadge = (status: string) => {
@@ -100,6 +126,12 @@ export default function AdminFeedbackPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {error && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
                 {feedbacks.length === 0 ? (
                   <p className="text-center text-gray-500 py-8">Aucun feedback pour le moment</p>
                 ) : (
@@ -145,6 +177,7 @@ export default function AdminFeedbackPage() {
                                       size="sm"
                                       className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white"
                                       onClick={() => updateStatus(feedback.id, 'in_progress')}
+                                      disabled={updatingId === feedback.id}
                                     >
                                       Prendre en charge
                                     </Button>
@@ -154,6 +187,7 @@ export default function AdminFeedbackPage() {
                                       size="sm"
                                       className="bg-[#10B981] hover:bg-[#10B981]/90 text-white"
                                       onClick={() => updateStatus(feedback.id, 'resolved')}
+                                      disabled={updatingId === feedback.id}
                                     >
                                       Résolu
                                     </Button>
@@ -164,6 +198,7 @@ export default function AdminFeedbackPage() {
                                       variant="outline"
                                       className="border-gray-300"
                                       onClick={() => updateStatus(feedback.id, 'closed')}
+                                      disabled={updatingId === feedback.id}
                                     >
                                       Fermer
                                     </Button>

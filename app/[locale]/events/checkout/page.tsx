@@ -31,6 +31,7 @@ export default function CheckoutPage() {
   const supabase = createClient()
   const searchParams = useSearchParams()
   const planType = searchParams.get('plan') || 'standard'
+  const upgradeEventId = searchParams.get('upgrade') // présent si on upgrade un événement existant (depuis edit/page.tsx)
 
   const [loading, setLoading] = useState(true)
   const [submittingMethod, setSubmittingMethod] = useState<PaymentMethod | null>(null)
@@ -105,12 +106,13 @@ export default function CheckoutPage() {
         return
       }
 
-      const discount = result.discount_percent || 10
+      const discount = result.discount_percent ?? 10
       const newPrice = originalPrice * (1 - discount / 100)
       setDiscountPercent(discount)
       setFinalPrice(Math.round(newPrice * 100) / 100)
       setPromoApplied(true)
       setAmbassadorId(result.ambassador_id)
+      setPromoError(result.already_referred ? result.message : null)
       setPromoError(null)
     } catch {
       setPromoError('Erreur lors de la validation du code')
@@ -157,7 +159,7 @@ export default function CheckoutPage() {
       }
 
       const payload = {
-        event_id: 'pending', // Sera créé après paiement
+        event_id: upgradeEventId || 'pending', // événement existant si upgrade, sinon sera créé après paiement
         amount: finalPrice,
         currency: currency,
         payment_method: method,

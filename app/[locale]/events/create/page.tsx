@@ -128,19 +128,6 @@ export default function CreateEventPage() {
         }
       }
 
-      const baseSlug = formData.name
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-
-      // Suffixe aléatoire pour garantir l'unicité du slug (ex: deux événements
-      // "Test" créés à des moments différents auraient sinon le même slug et
-      // violeraient la contrainte UNIQUE de la colonne `slug`)
-      const uniqueSuffix = crypto.randomUUID().slice(0, 6)
-      const slug = `${baseSlug}-${uniqueSuffix}`
-
       let coverImageUrl = null
       if (coverFile) {
         setUploading(true)
@@ -162,63 +149,45 @@ export default function CreateEventPage() {
         setUploading(false)
       }
 
-      // 1️⃣ Créer l'événement
-      const { data, error } = await supabase
-        .from('events')
-        .insert({
-          organizer_id: user.id,
-          name: formData.name,
-          type: formData.type,
-          date: formData.date,
-          time: formData.time || null,
-          location: formData.location || null,
-          description: formData.description || null,
-          slug: slug,
-          cover_image: coverImageUrl,
-          style: formData.style,
-          is_qr_active: formData.is_qr_active,
-          plan_type: planType,
-          max_guests: selectedPlan.maxGuests,
-          plan_price_fcfa: selectedPlan.priceFcfa,
-          plan_price_eur: selectedPlan.priceEur,
-          is_premium: !isFreePlan,
-          payment_status: 'paid',
-          status: 'active',
-        })
-        .select()
-        .single()
+      // ✅ La création passe par l'API pour que les plans payants soient créés
+      // "en attente" et redirigés vers le paiement, au lieu d'être activés
+      // directement sans jamais payer.
+      const response = await fetch('/api/events/create-with-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planType,
+          eventData: {
+            name: formData.name,
+            type: formData.type,
+            date: formData.date,
+            time: formData.time,
+            location: formData.location,
+            description: formData.description,
+            cover_image: coverImageUrl,
+            style: formData.style,
+          },
+        }),
+      })
 
-      if (error) {
-        console.error('❌ Erreur insertion:', error.message)
-        // Les erreurs métier levées par les triggers SQL (limite de plan,
-        // événement gratuit déjà actif) ont déjà un message clair et
-        // s'affichent tel quel. Les autres erreurs gardent un préfixe générique.
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
         const isBusinessRuleError =
-          error.message.includes('événement gratuit actif') ||
-          error.message.includes('Limite d\'invitations')
-        setError(isBusinessRuleError ? error.message : 'Erreur: ' + error.message)
+          result.error?.includes('événement gratuit actif') ||
+          result.error?.includes('Limite d\'invitations')
+        setError(isBusinessRuleError ? result.error : `Erreur: ${result.error || 'Une erreur est survenue'}`)
         setLoading(false)
         return
       }
 
-      // 2️⃣ Créer l'invitation générique
-      if (data) {
-        const { error: invError } = await supabase
-          .from('invitations')
-          .insert({
-            event_id: data.id,
-            recipient_name: 'Invité',
-            unique_link: `inv-${data.slug}`,
-            status: 'sent',
-          })
-
-        if (invError) {
-          console.error('❌ Erreur création invitation:', invError)
-        }
+      if (result.isFree) {
+        // Plan gratuit : l'événement est déjà actif, direction dashboard
+        router.push('/fr/dashboard')
+      } else {
+        // Plan payant : l'événement est créé "en attente", direction paiement
+        router.push(`/fr/events/checkout?plan=${planType}&upgrade=${result.eventId}`)
       }
-
-      // 3️⃣ Rediriger vers le dashboard
-      router.push(`/fr/dashboard`)
 
     } catch (err: any) {
       setError(err.message)

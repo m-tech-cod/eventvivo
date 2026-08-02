@@ -11,6 +11,18 @@ import { Copy, MessageCircle, ArrowLeft, Sparkles } from 'lucide-react'
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
 import { AnimatedSection } from '@/components/ui/animations'
 
+const STYLE_BACKGROUNDS: Record<string, string> = {
+  classique: '/images/styles/classique.jpg',
+  moderne: '/images/styles/moderne.jpg',
+  nature: '/images/styles/nature.jpg',
+  elegant: '/images/styles/elegant.jpg',
+  luxe: '/images/styles/luxe.jpg',
+}
+
+function getEventBackground(event: any) {
+  return event?.cover_image || STYLE_BACKGROUNDS[event?.style] || '/images/foule.webp'
+}
+
 export default function ShareInvitationPage() {
   const params = useParams()
   const router = useRouter()
@@ -43,10 +55,14 @@ export default function ShareInvitationPage() {
     }
   }, [event])
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(invitationUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 3000)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(invitationUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 3000)
+    } catch {
+      // silencieux si le presse-papier n'est pas accessible
+    }
   }
 
   const handleShare = (platform: string) => {
@@ -109,7 +125,7 @@ export default function ShareInvitationPage() {
   }
 
   return (
-    <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35} animate="zoom">
+    <BackgroundImage src={getEventBackground(event)} overlayOpacity={0.35} animate="zoom">
       <div className="flex-1 py-8 px-4 overflow-y-auto">
         <div className="container mx-auto max-w-md">
           <motion.div

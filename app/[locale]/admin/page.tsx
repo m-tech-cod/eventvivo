@@ -22,8 +22,7 @@ export default function AdminDashboardPage() {
     totalUsers: 0,
     totalPayments: 0,
   })
-  
-  // ✅ Données pour les graphiques
+
   const [registrations, setRegistrations] = useState<{ date: string; count: number }[]>([])
   const [salesData, setSalesData] = useState<{ date: string; amount: number }[]>([])
   const [recentPayments, setRecentPayments] = useState<any[]>([])
@@ -48,12 +47,10 @@ export default function AdminDashboardPage() {
         return
       }
 
-      // 1. Ambassadeurs
       const { count: ambassadorsCount } = await supabase
         .from('ambassadors')
         .select('*', { count: 'exact', head: true })
 
-      // 2. Feedbacks
       const { count: feedbacksCount } = await supabase
         .from('feedbacks')
         .select('*', { count: 'exact', head: true })
@@ -63,21 +60,22 @@ export default function AdminDashboardPage() {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'new')
 
-      // 3. Paiements
       const { data: payments } = await supabase
         .from('payments')
         .select('final_amount, status, created_at, plan_type, user_id, profiles(first_name, last_name, email)')
         .order('created_at', { ascending: false })
 
-      const totalSales = payments?.reduce((sum, p) => sum + p.final_amount, 0) || 0
-      const completed = payments?.filter(p => p.status === 'completed').length || 0
+      // ✅ Seuls les paiements réellement confirmés comptent comme "ventes"
+      const completedPayments = payments?.filter(p => p.status === 'completed') || []
+      const totalSales = completedPayments.reduce((sum, p) => sum + p.final_amount, 0)
+
+      const completed = completedPayments.length
       const pending = payments?.filter(p => p.status === 'pending').length || 0
       const failed = payments?.filter(p => p.status === 'failed').length || 0
 
       setPaymentStats({ total: payments?.length || 0, completed, pending, failed })
       setRecentPayments(payments?.slice(0, 10) || [])
 
-      // 4. Inscriptions (7 derniers jours)
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
@@ -96,20 +94,18 @@ export default function AdminDashboardPage() {
 
       setRegistrations(registrationsByDay)
 
-      // 5. Ventes (7 derniers jours)
       const salesByDay = Array.from({ length: 7 }, (_, i) => {
         const date = new Date()
         date.setDate(date.getDate() - i)
         const dateStr = date.toISOString().split('T')[0]
-        const amount = payments
-          ?.filter(p => p.status === 'completed' && p.created_at.split('T')[0] === dateStr)
-          .reduce((sum, p) => sum + p.final_amount, 0) || 0
+        const amount = completedPayments
+          .filter(p => p.created_at.split('T')[0] === dateStr)
+          .reduce((sum, p) => sum + p.final_amount, 0)
         return { date: dateStr, amount }
       }).reverse()
 
       setSalesData(salesByDay)
 
-      // 6. Total utilisateurs
       const { count: totalUsers } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true })
@@ -122,7 +118,7 @@ export default function AdminDashboardPage() {
         totalUsers: totalUsers || 0,
         totalPayments: payments?.length || 0,
       })
-      
+
       setLoading(false)
     }
 
@@ -137,7 +133,6 @@ export default function AdminDashboardPage() {
     )
   }
 
-  // ✅ Calcul du max pour les graphiques
   const maxRegistrations = Math.max(...registrations.map(d => d.count), 1)
   const maxSales = Math.max(...salesData.map(d => d.amount), 1)
 
@@ -164,7 +159,6 @@ export default function AdminDashboardPage() {
             </Button>
           </motion.div>
 
-          {/* ✅ Stats principales */}
           <StaggeredContainer className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <StatCardAdmin
               icon={<Users className="w-6 h-6 text-[#1E3A8A]" />}
@@ -186,15 +180,13 @@ export default function AdminDashboardPage() {
             />
             <StatCardAdmin
               icon={<TrendingUp className="w-6 h-6 text-[#10B981]" />}
-              label="Ventes totales"
+              label="Ventes totales (confirmées)"
               value={`${stats.totalSales.toFixed(0)} FCFA`}
               color="green"
             />
           </StaggeredContainer>
 
-          {/* ✅ Graphiques */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            {/* Inscriptions (7 jours) */}
             <Card className="bg-white/95 backdrop-blur-sm border-0">
               <CardHeader>
                 <CardTitle className="text-lg text-[#1E3A8A] flex items-center gap-2">
@@ -206,9 +198,9 @@ export default function AdminDashboardPage() {
                 <div className="flex items-end h-32 gap-2">
                   {registrations.map((day, i) => (
                     <div key={i} className="flex-1 flex flex-col items-center">
-                      <div 
+                      <div
                         className="w-full bg-[#1E3A8A] rounded-t transition-all duration-500"
-                        style={{ 
+                        style={{
                           height: `${(day.count / maxRegistrations) * 100}%`,
                           minHeight: day.count > 0 ? '8px' : '0px'
                         }}
@@ -223,21 +215,20 @@ export default function AdminDashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Ventes (7 jours) */}
             <Card className="bg-white/95 backdrop-blur-sm border-0">
               <CardHeader>
                 <CardTitle className="text-lg text-[#1E3A8A] flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-[#10B981]" />
-                  Ventes (7 jours)
+                  Ventes confirmées (7 jours)
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-end h-32 gap-2">
                   {salesData.map((day, i) => (
                     <div key={i} className="flex-1 flex flex-col items-center">
-                      <div 
+                      <div
                         className="w-full bg-[#F59E0B] rounded-t transition-all duration-500"
-                        style={{ 
+                        style={{
                           height: `${(day.amount / maxSales) * 100}%`,
                           minHeight: day.amount > 0 ? '8px' : '0px'
                         }}
@@ -253,7 +244,6 @@ export default function AdminDashboardPage() {
             </Card>
           </div>
 
-          {/* ✅ Statistiques paiements */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <Card className="bg-white/95 backdrop-blur-sm border-0">
               <CardContent className="p-4 text-center">
@@ -275,7 +265,6 @@ export default function AdminDashboardPage() {
             </Card>
           </div>
 
-          {/* ✅ Dernières transactions */}
           <AnimatedSection delay={0.3}>
             <Card className="bg-white/95 backdrop-blur-sm border-0 mb-6">
               <CardHeader>
@@ -306,13 +295,13 @@ export default function AdminDashboardPage() {
                             <td className="py-2 font-medium">{payment.final_amount} FCFA</td>
                             <td className="py-2">
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                payment.status === 'completed' 
-                                  ? 'bg-green-100 text-green-700' 
+                                payment.status === 'completed'
+                                  ? 'bg-green-100 text-green-700'
                                   : payment.status === 'pending'
                                   ? 'bg-yellow-100 text-yellow-700'
                                   : 'bg-red-100 text-red-700'
                               }`}>
-                                {payment.status === 'completed' ? '✅ Payé' : 
+                                {payment.status === 'completed' ? '✅ Payé' :
                                  payment.status === 'pending' ? '⏳ En attente' : '❌ Échoué'}
                               </span>
                             </td>
@@ -329,7 +318,6 @@ export default function AdminDashboardPage() {
             </Card>
           </AnimatedSection>
 
-          {/* ✅ Actions admin */}
           <AnimatedSection delay={0.4}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card
@@ -360,7 +348,6 @@ export default function AdminDashboardPage() {
   )
 }
 
-// ✅ Composant StatCard
 function StatCardAdmin({ icon, label, value, color }: {
   icon: React.ReactNode
   label: string

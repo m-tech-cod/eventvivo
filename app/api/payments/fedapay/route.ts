@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { rateLimit } from '@/lib/rate-limit'
 import { paymentSchema } from '@/lib/validations/payment'
 
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = await createServerClient()
+  const adminSupabase = createAdminClient() // pour la lecture de `ambassadors`, réservée aux admins par RLS
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
@@ -46,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     // ✅ Code promo
     if (promo_code) {
-      const { data: ambassador, error: ambassadorError } = await supabase
+      const { data: ambassador, error: ambassadorError } = await adminSupabase
         .from('ambassadors')
         .select('id, commission_rate, expires_at, status')
         .eq('promo_code', promo_code.toUpperCase())
