@@ -17,7 +17,7 @@ export function useAuth() {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
-      
+
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
@@ -26,7 +26,7 @@ export function useAuth() {
           .single()
         setUserRole(profile?.role || 'user')
       }
-      
+
       setLoading(false)
     }
 
@@ -42,17 +42,20 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [supabase])
 
-  const signIn = async (data: { email: string; password: string }) => {
+  // ✅ captchaToken optionnel : à fournir dès que hCaptcha est activé côté
+  // Supabase (Authentication → Attack Protection). Sans lui, Supabase
+  // rejettera la requête une fois le CAPTCHA activé côté serveur.
+  const signIn = async (data: { email: string; password: string; captchaToken?: string }) => {
     setError(null)
     try {
       const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
+        options: data.captchaToken ? { captchaToken: data.captchaToken } : undefined,
       })
 
       if (error) throw error
 
-      // Récupérer le rôle
       let role = 'user'
       if (authData.user) {
         const { data: profile } = await supabase
@@ -71,16 +74,20 @@ export function useAuth() {
     }
   }
 
-  const signUp = async (data: { 
-    firstName: string; 
-    lastName: string; 
-    email: string; 
-    password: string; 
-    confirmPassword: string 
+  const signUp = async (data: {
+    firstName: string
+    lastName: string
+    email: string
+    password: string
+    confirmPassword: string
+    captchaToken?: string
   }) => {
     setError(null)
     try {
-      // 1. Créer l'utilisateur dans auth
+      // La ligne `profiles` correspondante est créée automatiquement par le
+      // trigger `handle_new_user` côté base (voir migration
+      // fix_missing_profiles_trigger.sql) — plus besoin de l'insérer
+      // manuellement ici, ce qui évite une tentative d'insertion en double.
       const { data: authData, error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -89,27 +96,11 @@ export function useAuth() {
             first_name: data.firstName,
             last_name: data.lastName,
           },
+          captchaToken: data.captchaToken,
         },
       })
 
       if (error) throw error
-
-      // 2. Créer le profil dans la table profiles
-      if (authData.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: authData.user.id,
-            first_name: data.firstName,
-            last_name: data.lastName,
-            email: data.email,
-          })
-
-        if (profileError) {
-          console.error('Erreur création profil:', profileError)
-          // Si le profil existe déjà, on continue
-        }
-      }
 
       window.location.href = '/fr/dashboard'
       return { success: true }
@@ -125,11 +116,12 @@ export function useAuth() {
     router.refresh()
   }
 
-  const resetPassword = async (email: string) => {
+  const resetPassword = async (email: string, captchaToken?: string) => {
     setError(null)
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/fr/auth/update-password`,
+        captchaToken,
       })
 
       if (error) throw error
@@ -157,8 +149,6 @@ export function useAuth() {
     }
   }
 
-  // hooks/useAuth.ts - AJOUTE CE CODE avant le return
-
   const signInWithGoogle = async () => {
     setError(null)
     try {
@@ -170,7 +160,7 @@ export function useAuth() {
       })
 
       if (error) throw error
-      
+
       return { success: true }
     } catch (err: any) {
       setError(err.message)

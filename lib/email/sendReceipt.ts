@@ -99,7 +99,7 @@ export async function sendReceiptEmail({
                           IFU : 0202238028015 — Porto-Novo, Bénin
                         </p>
                         <p style="margin: 10px 0 0 0;">
-                          <a href="mailto:${process.env.RESEND_REPLY_TO || 'malomonaraffath@gmail.com'}" style="color: #1E3A8A; text-decoration: underline;">${process.env.RESEND_REPLY_TO || 'malomonaraffath@gmail.com'}</a>
+                          <a href="mailto:${process.env.RESEND_REPLY_TO || 'contact@alaydetech.com'}" style="color: #1E3A8A; text-decoration: underline;">${process.env.RESEND_REPLY_TO || 'contact@alaydetech.com'}</a>
                         </p>
                       </td>
                     </tr>

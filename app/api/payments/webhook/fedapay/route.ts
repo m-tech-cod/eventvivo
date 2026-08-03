@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { generateReceiptPDF, generateReceiptNumber } from '@/lib/pdf/receipt'
 import { sendReceiptEmail } from '@/lib/email/sendReceipt'
 import { getPlanMaxGuests } from '@/lib/utils/currency'
@@ -15,7 +15,15 @@ const PLAN_NAMES: Record<string, string> = {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createServerClient()
+  // ⚠️ Le webhook FedaPay est un appel serveur-à-serveur : il n'y a jamais
+  // de session utilisateur (pas de cookies, pas de auth.uid()). Toutes les
+  // policies RLS basées sur auth.uid() (events_update_own, payments n'a
+  // même pas de policy UPDATE, profiles_update_own, etc.) bloqueraient donc
+  // SILENCIEUSEMENT chaque écriture — sans erreur visible, juste 0 ligne
+  // affectée. La vraie sécurité de cette route est la vérification de
+  // signature HMAC ci-dessous, pas RLS : on utilise donc le client admin
+  // (service_role) qui contourne RLS, pour TOUTES les opérations.
+  const supabase = createAdminClient()
 
   try {
     // ✅ 1. Lire le corps brut pour la signature
@@ -185,6 +193,7 @@ export async function POST(request: NextRequest) {
         customerName: `${organizer.first_name} ${organizer.last_name}`,
         customerEmail: organizer.email,
         eventId: event?.id || null,
+        eventName: event?.name || null,
         planName: planName,
         planPrice: payment.final_amount || payment.amount,
         currency: currency,

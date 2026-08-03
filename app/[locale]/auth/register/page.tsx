@@ -2,8 +2,9 @@
 
 import { Eye, EyeOff } from 'lucide-react'
 import { ArrowLeft } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
+import HCaptcha from '@hcaptcha/react-hcaptcha'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,8 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const { signUp, signInWithGoogle } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const captchaRef = useRef<HCaptcha>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,13 +38,41 @@ export default function RegisterPage() {
       return
     }
 
+    if (password.length < 8) {
+      setError('Le mot de passe doit contenir au moins 8 caractères')
+      setLoading(false)
+      return
+    }
+
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('Le mot de passe doit contenir au moins une lettre et un chiffre')
+      setLoading(false)
+      return
+    }
+
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('Le mot de passe doit contenir au moins une lettre et un chiffre')
+      setLoading(false)
+      return
+    }
+
+    if (!captchaToken) {
+      setError('Merci de valider le CAPTCHA avant de continuer')
+      setLoading(false)
+      return
+    }
+
     try {
-      const result = await signUp({ firstName, lastName, email, password, confirmPassword })
+      const result = await signUp({ firstName, lastName, email, password, confirmPassword, captchaToken })
       if (!result.success) {
         setError(result.error || "Erreur d'inscription")
+        captchaRef.current?.resetCaptcha()
+        setCaptchaToken(null)
       }
     } catch (err: any) {
       setError(err.message)
+      captchaRef.current?.resetCaptcha()
+      setCaptchaToken(null)
     } finally {
       setLoading(false)
     }
@@ -159,6 +190,9 @@ export default function RegisterPage() {
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Au moins 8 caractères, avec une lettre et un chiffre
+                  </p>
                 </div>
 
                 <div className="relative">
@@ -179,6 +213,15 @@ export default function RegisterPage() {
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
+                </div>
+
+                <div className="flex justify-center">
+                  <HCaptcha
+                    ref={captchaRef}
+                    sitekey={process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY!}
+                    onVerify={(token) => setCaptchaToken(token)}
+                    onExpire={() => setCaptchaToken(null)}
+                  />
                 </div>
 
                 <Button
