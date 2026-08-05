@@ -21,6 +21,7 @@ import {
   Crown,
   TrendingUp,
   Activity,
+  ArrowUpRight,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
@@ -32,6 +33,14 @@ const PLAN_CONFIG = {
   standard: { label: 'Standard', color: 'text-[#1E3A8A]', bg: 'bg-[#1E3A8A]/10' },
   prestige: { label: 'Prestige', color: 'text-[#F59E0B]', bg: 'bg-[#F59E0B]/10' },
   vip: { label: 'VIP', color: 'text-[#10B981]', bg: 'bg-[#10B981]/10' },
+}
+
+// Palier suivant pour chaque plan — utilisé pour l'upsell dashboard et pour
+// présélectionner le bon plan dans le tunnel choose-plan/checkout.
+const NEXT_PLAN: Record<string, { id: string; label: string }> = {
+  free: { id: 'standard', label: 'Standard' },
+  standard: { id: 'prestige', label: 'Prestige' },
+  prestige: { id: 'vip', label: 'VIP' },
 }
 
 export default function DashboardPage() {
@@ -66,19 +75,18 @@ export default function DashboardPage() {
       }
       setUser(user)
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
+      // ✅ Indépendantes l'une de l'autre (dépendent seulement de user.id) —
+      // parallélisées au lieu d'être attendues l'une après l'autre.
+      const [{ data: profile }, { data: eventsData }] = await Promise.all([
+        supabase.from('profiles').select('role').eq('id', user.id).single(),
+        supabase
+          .from('events')
+          .select('id, name, date, slug, plan_type, cover_image')
+          .eq('organizer_id', user.id)
+          .order('date', { ascending: true }),
+      ])
+
       setUserRole(profile?.role || 'user')
-
-      const { data: eventsData } = await supabase
-        .from('events')
-        .select('*')
-        .eq('organizer_id', user.id)
-        .order('date', { ascending: true })
-
       setEvents(eventsData || [])
       if (eventsData && eventsData.length > 0) {
         setSelectedEventId(eventsData[0].id)
@@ -97,30 +105,41 @@ export default function DashboardPage() {
     const fetchEventData = async () => {
       setLoadingEventData(true)
 
-      const { data: statsData } = await supabase
-        .from('event_stats')
-        .select('*')
-        .eq('event_id', selectedEventId)
-        .single()
-      setStats(statsData)
-
-      const { data: invitationsData } = await supabase
-        .from('invitations')
-        .select('*')
-        .eq('event_id', selectedEventId)
-        .order('created_at', { ascending: false })
-        .limit(5)
-      setRecentInvitations(invitationsData || [])
-
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
-      const { data: rsvpData } = await supabase
-        .from('rsvps')
-        .select('status, responded_at, invitations!inner(event_id)')
-        .eq('invitations.event_id', selectedEventId)
-        .gte('responded_at', sevenDaysAgo.toISOString())
-        .order('responded_at', { ascending: true })
+      // ✅ 4 requêtes indépendantes (aucune ne dépend du résultat d'une
+      // autre) — parallélisées : la latence totale devient celle de la plus
+      // lente au lieu de la somme des 4.
+      const [
+        { data: statsData },
+        { data: invitationsData },
+        { data: rsvpData },
+        { data: invData },
+      ] = await Promise.all([
+        supabase.from('event_stats').select('*').eq('event_id', selectedEventId).single(),
+        supabase
+          .from('invitations')
+          .select('id, recipient_name, created_at, status')
+          .eq('event_id', selectedEventId)
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('rsvps')
+          .select('status, responded_at, invitations!inner(event_id)')
+          .eq('invitations.event_id', selectedEventId)
+          .gte('responded_at', sevenDaysAgo.toISOString())
+          .order('responded_at', { ascending: true }),
+        supabase
+          .from('invitations')
+          .select('status, created_at, responded_at')
+          .eq('event_id', selectedEventId)
+          .gte('created_at', sevenDaysAgo.toISOString())
+          .order('created_at', { ascending: true }),
+      ])
+
+      setStats(statsData)
+      setRecentInvitations(invitationsData || [])
 
       const rsvpByDay = Array.from({ length: 7 }, (_, i) => {
         const date = new Date()
@@ -134,13 +153,6 @@ export default function DashboardPage() {
         }
       }).reverse()
       setRsvpTrend(rsvpByDay)
-
-      const { data: invData } = await supabase
-        .from('invitations')
-        .select('status, created_at, responded_at')
-        .eq('event_id', selectedEventId)
-        .gte('created_at', sevenDaysAgo.toISOString())
-        .order('created_at', { ascending: true })
 
       const invByDay = Array.from({ length: 7 }, (_, i) => {
         const date = new Date()
@@ -217,6 +229,12 @@ export default function DashboardPage() {
   const totalInvitations = stats?.total_invitations || 0
   const maxGuests = getPlanMaxGuests(planType) // 0 = illimité
   const isVipPlan = planType === 'vip'
+  const nextPlan = NEXT_PLAN[planType] || null
+  const usageRatio = maxGuests > 0 ? totalInvitations / maxGuests : 0
+  const isNearQuota = maxGuests > 0 && usageRatio >= 0.7
+  const upgradeHref = nextPlan
+    ? `/fr/events/choose-plan?upgrade=${selectedEvent.id}&plan=${nextPlan.id}`
+    : `/fr/events/choose-plan?upgrade=${selectedEvent.id}`
 
   const maxRsvp = Math.max(...rsvpTrend.map((d) => Math.max(d.attending, d.declined)), 1)
   const maxInv = Math.max(...invitationTrend.map((d) => Math.max(d.sent, d.responded)), 1)
@@ -313,6 +331,35 @@ export default function DashboardPage() {
               </div>
             )}
           </motion.div>
+
+          {/* Bannière d'upgrade — n'apparaît que si l'usage réel (invités
+              utilisés / quota du plan) le justifie, jamais de fausse urgence */}
+          {isNearQuota && nextPlan && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4"
+            >
+              <Link href={upgradeHref}>
+                <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-[#F59E0B] to-[#F59E0B]/80 text-[#1E3A8A] rounded-xl px-4 py-3 shadow-lg shadow-[#F59E0B]/25 hover:shadow-xl hover:scale-[1.01] transition-all duration-300 cursor-pointer">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-white/30 flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm truncate">
+                        Vous approchez de votre limite : {totalInvitations}/{maxGuests} invités
+                      </p>
+                      <p className="text-xs text-[#1E3A8A]/80">
+                        Passez à {nextPlan.label} pour continuer à inviter sans interruption
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowUpRight className="w-5 h-5 flex-shrink-0" />
+                </div>
+              </Link>
+            </motion.div>
+          )}
 
           {/* Statistiques */}
           <StaggeredContainer className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -436,11 +483,11 @@ export default function DashboardPage() {
               </Button>
             </Link>
 
-            {!isVipPlan && (
-              <Link href={`/fr/events/choose-plan?upgrade=${selectedEvent.id}`}>
-                <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-semibold">
+            {!isVipPlan && nextPlan && (
+              <Link href={upgradeHref}>
+                <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-semibold shadow-md shadow-[#F59E0B]/20 hover:shadow-lg hover:scale-[1.02] transition-all duration-300">
                   <Sparkles className="w-4 h-4 mr-2" />
-                  {planType === 'free' ? 'Passer à Standard' : planType === 'standard' ? 'Passer à Prestige' : 'Passer à VIP'}
+                  Passer à {nextPlan.label}
                 </Button>
               </Link>
             )}

@@ -67,14 +67,14 @@ export default function ShareInvitationPage() {
 
   const handleShare = (platform: string) => {
     const shareText = encodeURIComponent(
-      `📢 **${event?.name}**\n\n` +
+      `📢 *${event?.name}*\n\n` +
+      `Vous êtes chaleureusement invité(e) !\n\n` +
       `📅 ${new Date(event?.date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}\n` +
       `${event?.time ? `⏰ ${event?.time}\n` : ''}` +
-      `${event?.location ? `📍 ${event?.location}\n\n` : '\n'}` +
-      `🎉 **Répondez maintenant !**\n` +
-      `✅ Je participe  |  ❌ Je ne participe pas\n\n` +
-      `👉 Cliquez ici pour confirmer votre présence :\n` +
-      `${invitationUrl}`
+      `${event?.location ? `📍 ${event?.location}\n` : ''}` +
+      `\n👉 Confirmez votre présence en un clic, ça ne prend que 30 secondes :\n` +
+      `${invitationUrl}\n\n` +
+      `On compte sur vous ! 🎉`
     )
     
     const shareUrls: Record<string, string> = {
@@ -171,17 +171,19 @@ export default function ShareInvitationPage() {
 
                 <div className="p-4 bg-[#DCF8C6] rounded-lg border border-[#B6E5A3]">
                   <p className="text-sm text-gray-800 whitespace-pre-wrap">
-                    <strong>{event.name}</strong>
+                    📢 <strong>{event.name}</strong>
+                    {'\n\n'}
+                    Vous êtes chaleureusement invité(e) !
                     {'\n\n'}
                     📅 {new Date(event.date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
                     {event.time && `\n⏰ ${event.time}`}
                     {event.location && `\n📍 ${event.location}`}
                     {'\n\n'}
-                    🎉 <strong>Répondez maintenant !</strong>
+                    👉 Confirmez votre présence en un clic, ça ne prend que 30 secondes :
                     {'\n'}
-                    ✅ Je participe  |  ❌ Je ne participe pas
+                    <span className="text-[#1E3A8A] underline">{invitationUrl}</span>
                     {'\n\n'}
-                    👉 <span className="text-[#1E3A8A] underline">{invitationUrl}</span>
+                    On compte sur vous ! 🎉
                   </p>
                 </div>
 

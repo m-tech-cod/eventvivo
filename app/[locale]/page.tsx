@@ -1,7 +1,8 @@
 // app/[locale]/page.tsx
-'use client'
-
-import { motion } from 'framer-motion'
+// Server Component : permet de déclarer une stratégie ISR explicite
+// (impossible depuis un Client Component). Chaque section garde son propre
+// 'use client' interne pour ses animations whileInView — aucune
+// interactivité perdue en retirant la directive au niveau de la page.
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
 import { HeroCarousel } from '@/components/home/HeroCarousel'
 import { Features } from '@/components/home/Features'
@@ -13,24 +14,22 @@ import { SocialProofBanner } from '@/components/home/SocialProofBanner'
 import { FinalCTA } from '@/components/home/FinalCTA'
 import { AnimatedSection } from '@/components/ui/animations'
 
+// Contenu marketing statique — régénéré au plus toutes les heures plutôt que
+// recalculé à chaque requête (défaut) ou jamais mis en cache.
+export const revalidate = 3600
+
 export default function HomePage() {
   return (
     <main className="min-h-screen">
-      {/* Section Hero avec image de fond */}
+      {/* Section Hero avec image de fond — seule image LCP de la page */}
       <BackgroundImage
         src="/images/interieur.webp"
         animate="zoom" overlayOpacity={0.35}
         className="min-h-screen"
+        priority
       >
         <div className="flex-1 flex items-center justify-center">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="w-full"
-          >
-            <HeroCarousel />
-          </motion.div>
+          <HeroCarousel />
         </div>
       </BackgroundImage>
 

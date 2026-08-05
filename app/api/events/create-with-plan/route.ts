@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getPlanMaxGuests, getPriceForCurrency } from '@/lib/utils/currency'
 
 export const dynamic = 'force-dynamic'
@@ -8,6 +9,7 @@ const VALID_PLANS = ['free', 'standard', 'prestige', 'vip']
 
 export async function POST(request: NextRequest) {
   const supabase = await createServerClient()
+  const adminSupabase = createAdminClient() // pour l'insert de l'événement, ci-dessous
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
@@ -61,7 +63,13 @@ export async function POST(request: NextRequest) {
 
     const isFree = planType === 'free'
 
-    const { data: event, error } = await supabase
+    // Client admin (service_role) : plan_type/is_premium/payment_status/
+    // max_guests/prix sont calculés côté serveur juste au-dessus, jamais
+    // fournis par le client. La base restreint par ailleurs l'écriture de
+    // ces colonnes au rôle `authenticated` (voir policies/permissions sur
+    // `public.events` côté Supabase) — un insert avec le client de session
+    // échouerait donc, contrairement à celui-ci qui contourne RLS légitimement.
+    const { data: event, error } = await adminSupabase
       .from('events')
       .insert({
         organizer_id: user.id,

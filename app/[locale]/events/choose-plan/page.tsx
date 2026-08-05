@@ -33,7 +33,7 @@ const plans = [
     price_usd: 9.99,
     guests: 100,
     styles: 5,
-    features: ['RSVP avec miniature', 'Tableau statistique', 'Export PDF', '5 styles d\'invitation'],
+    features: ['RSVP avec miniature', 'Tableau statistique', 'Export PDF'],
     isPopular: true,
     icon: <Sparkles className="w-6 h-6 text-[#1E3A8A]" />,
     badge: '⭐ Populaire',
@@ -46,7 +46,7 @@ const plans = [
     price_usd: 19.99,
     guests: 500,
     styles: 50,
-    features: ['Tout Standard + QR Codes', 'Export Excel', 'PDF HD', '50 styles premium'],
+    features: ['Tout Standard + QR Codes', 'Export Excel', 'PDF HD'],
     isPopular: false,
     icon: <Crown className="w-6 h-6 text-[#F59E0B]" />,
     badge: '👑 Prestige',
@@ -72,7 +72,10 @@ export default function ChoosePlanPage() {
   const supabase = createClient()
   const searchParams = useSearchParams()
   const upgradeEventId = searchParams.get('upgrade') // présent si on vient de dashboard/edit pour upgrader un événement existant
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
+  const requestedPlan = searchParams.get('plan')
+  // Présélection : le plan demandé dans l'URL, sinon le plan populaire (Standard)
+  // par défaut — évite un clic de friction supplémentaire avant "Continuer".
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(requestedPlan || 'standard')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -167,13 +170,16 @@ export default function ChoosePlanPage() {
             {plans.filter((p) => !upgradeEventId || p.id !== 'free').map((plan, index) => {
               const isSelected = selectedPlan === plan.id
               const { price, symbol } = getPrice(plan)
+              const perGuest = price > 0 && plan.guests > 0 ? price / plan.guests : null
 
               return (
                 <motion.div key={plan.id} variants={staggerItem} className="h-full">
                   <Card
                     className={`cursor-pointer transition-all duration-300 hover:shadow-2xl h-full backdrop-blur-sm ${
                       isSelected
-                        ? 'border-2 border-[#F59E0B] shadow-lg bg-white/95'
+                        ? plan.isPopular
+                          ? 'border-2 border-[#F59E0B] shadow-2xl shadow-[#F59E0B]/30 bg-white lg:scale-105'
+                          : 'border-2 border-[#F59E0B] shadow-lg bg-white/95'
                         : 'border-2 border-white/20 hover:border-[#F59E0B]/50 bg-white/80'
                     }`}
                     onClick={() => setSelectedPlan(plan.id)}
@@ -206,6 +212,11 @@ export default function ChoosePlanPage() {
                       <CardDescription>
                         {plan.guests === 0 ? 'Invités illimités' : `Jusqu'à ${plan.guests} invités`}
                       </CardDescription>
+                      {perGuest !== null && (
+                        <p className="text-[11px] text-[#10B981] font-medium">
+                          ≈ {perGuest < 1 ? perGuest.toFixed(2) : Math.round(perGuest)} {symbol} / invité
+                        </p>
+                      )}
                     </CardHeader>
                     <CardContent>
                       <ul className="space-y-2 text-sm">
@@ -242,7 +253,7 @@ export default function ChoosePlanPage() {
             <Button
               onClick={handleChoosePlan}
               disabled={!selectedPlan || loading}
-              className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-semibold px-12 py-6 text-lg"
+              className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-bold px-12 py-6 text-lg rounded-xl shadow-lg shadow-[#F59E0B]/30 hover:shadow-xl hover:scale-[1.02] transition-all duration-300"
             >
               {loading ? (
                 <>
@@ -250,7 +261,7 @@ export default function ChoosePlanPage() {
                   Chargement...
                 </>
               ) : (
-                `Continuer avec ${plans.find(p => p.id === selectedPlan)?.name || ''}`
+                `Continuer avec ${plans.find(p => p.id === selectedPlan)?.name || ''} →`
               )}
             </Button>
             <p className="text-xs text-white/60 mt-4 drop-shadow">

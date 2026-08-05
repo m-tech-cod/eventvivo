@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { rateLimit } from '@/lib/rate-limit'
 import { paymentSchema } from '@/lib/validations/payment'
+import { getPriceForCurrency } from '@/lib/utils/currency'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +28,6 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  console.error('📦 Payload reçu:', JSON.stringify(body, null, 2))
 
   // ✅ Validation (schéma partagé avec le reste de l'app)
   const validation = paymentSchema.safeParse(body)
@@ -39,7 +39,16 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { event_id, amount, currency, payment_method, promo_code, ambassador_id, plan_type } = validation.data
+  const { event_id, currency, payment_method, promo_code, ambassador_id, plan_type } = validation.data
+
+  // ✅ Source unique de vérité sur le prix : jamais le client. Le même
+  // helper est utilisé côté affichage (checkout/page.tsx, premium/page.tsx)
+  // et côté serveur (create-with-plan/route.ts) — un montant client
+  // divergent ne peut donc être qu'une tentative de manipulation.
+  const amount = getPriceForCurrency(currency, plan_type)
+  if (!amount || amount <= 0) {
+    return NextResponse.json({ error: 'Prix indisponible pour ce plan' }, { status: 400 })
+  }
 
   try {
     let finalAmount = amount
@@ -124,8 +133,6 @@ export async function POST(request: NextRequest) {
         customer,
       }
 
-      console.error('📦 Requête FedaPay (création):', JSON.stringify(createBody, null, 2))
-
       const createResponse = await fetch('https://api.fedapay.com/v1/transactions', {
         method: 'POST',
         headers: {
@@ -139,7 +146,6 @@ export async function POST(request: NextRequest) {
       clearTimeout(timeoutId)
 
       const createText = await createResponse.text()
-      console.error('📦 Réponse brute FedaPay (création):', createText)
 
       let createData
       try {
@@ -169,8 +175,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Réponse FedaPay inattendue' }, { status: 502 })
       }
 
-      // ✅ Sauvegarder la transaction en base
-      const { error: insertError } = await supabase
+      // Sauvegarder la transaction en base — client admin (service_role) :
+      // user.id/amount/finalAmount sont déjà vérifiés/calculés côté serveur
+      // ci-dessus, donc contourner RLS ici est sûr. Le client de session n'a
+      // pas de droit d'écriture directe sur `payments` (voir permissions
+      // côté Supabase) ; sans ce client admin, l'insert échouerait et le
+      // webhook ne retrouverait jamais la transaction à la confirmation.
+      const { error: insertError } = await adminSupabase
         .from('payments')
         .insert({
           event_id: event_id === 'pending' ? null : event_id,
@@ -184,12 +195,19 @@ export async function POST(request: NextRequest) {
           status: 'pending',
           promo_code: finalPromoCode,
           ambassador_id: finalAmbassadorId,
-          plan_type: plan_type || 'standard',
+          plan_type: plan_type,
           provider_response: createData,
         })
 
       if (insertError) {
+        // ⚠️ Ne jamais renvoyer success:true ici : sans ligne `payments`, le
+        // webhook ne retrouvera jamais cette transaction à la confirmation
+        // et le client aura payé sans que son plan soit jamais activé.
         console.error('❌ Erreur insertion paiement:', insertError)
+        return NextResponse.json(
+          { error: 'Impossible d\'enregistrer le paiement, veuillez réessayer.' },
+          { status: 500 }
+        )
       }
 
       return NextResponse.json({

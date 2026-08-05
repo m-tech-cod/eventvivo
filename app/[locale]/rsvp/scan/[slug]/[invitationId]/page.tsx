@@ -1,12 +1,19 @@
 // app/[locale]/scan/[slug]/[invitationId]/page.tsx
-import { createServerClient } from '@/lib/supabase/server'
+//
+// Scanné par le personnel de l'événement à l'entrée, sans authentification —
+// juste le lien du QR code, dont l'UUID imprévisible fait office de jeton
+// d'accès. RLS ne peut pas exprimer "seulement cette ligne précise" (elle ne
+// voit que le rôle appelant, pas les filtres de la requête), donc la
+// restriction réelle vient des filtres exacts ci-dessous (slug, id,
+// event_id), appliqués via le client admin plutôt que RLS.
+import { createAdminClient } from '@/lib/supabase/admin'
 import { ScanResult } from '@/components/rsvp/ScanResult'
 
 type Params = { params: Promise<{ slug: string; invitationId: string }> }
 
 export default async function ScanPage({ params }: Params) {
   const { slug, invitationId } = await params
-  const supabase = await createServerClient()
+  const supabase = createAdminClient()
 
   const { data: event } = await supabase
     .from('events')

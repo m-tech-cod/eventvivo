@@ -186,17 +186,27 @@ export default function EditEventPage() {
         return
       }
 
-      // Pas de changement de plan payant : on peut mettre à jour plan_type
-      // directement (cas du downgrade vers gratuit, ou aucun changement de plan)
+      // Le plan n'a pas changé : on ne touche à AUCUN champ lié au
+      // paiement/plan (déjà correct en base, écrasés inutilement — et
+      // dangereusement — ils forceraient payment_status/is_premium à 'paid'
+      // même sur un événement jamais payé). Seul le cas du downgrade vers
+      // gratuit justifie de les mettre à jour : c'est sans risque, le plan
+      // gratuit n'a pas de condition de paiement.
+      const isDowngradeToFree = oldPlanType !== 'free' && newPlanType === 'free'
+
       const { error: updateError } = await supabase
         .from('events')
-        .update({
-          ...contentUpdate,
-          plan_type: newPlanType,
-          is_premium: newPlanType !== 'free',
-          max_guests: getPlanMaxGuests(newPlanType),
-          payment_status: 'paid',
-        })
+        .update(
+          isDowngradeToFree
+            ? {
+                ...contentUpdate,
+                plan_type: 'free',
+                is_premium: false,
+                max_guests: getPlanMaxGuests('free'),
+                payment_status: 'paid',
+              }
+            : contentUpdate
+        )
         .eq('id', eventId)
 
       if (updateError) throw updateError

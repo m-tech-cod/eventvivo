@@ -12,6 +12,10 @@ interface BackgroundImageProps {
   className?: string
   position?: 'center' | 'top' | 'bottom'
   animate?: 'none' | 'zoom' | 'parallax'
+  /** LCP réel de la page uniquement — jamais true pour une image sous la ligne de flottaison (ex. un second BackgroundImage plus bas sur la même page). */
+  priority?: boolean
+  /** 75 par défaut (= défaut next/image, invisible avec l'overlay sombre appliqué par-dessus). Monter à 90 seulement si l'image est visible sans overlay marqué. */
+  quality?: 75 | 90
 }
 
 export function BackgroundImage({
@@ -22,6 +26,8 @@ export function BackgroundImage({
   className = '',
   position = 'center',
   animate = 'none',
+  priority = true,
+  quality = 75,
 }: BackgroundImageProps) {
   const positionClass = {
     center: 'object-center',
@@ -67,9 +73,11 @@ export function BackgroundImage({
           src={src}
           alt={alt}
           fill
+          sizes="100vw"
           className={`object-cover ${positionClass[position]}`}
-          priority
-          quality={90}
+          priority={priority}
+          loading={priority ? undefined : 'lazy'}
+          quality={quality}
         />
       ) : (
         <motion.div

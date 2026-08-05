@@ -10,18 +10,38 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { ArrowLeft, Loader2, CheckCircle, XCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, CheckCircle, XCircle, ShieldCheck, Sparkles, Check } from 'lucide-react'
 import { BackgroundImage } from '@/components/ui/BackgroundImage'
 import { AnimatedSection } from '@/components/ui/animations'
 import { getCurrencyByCountry, getPriceForCurrency, getCurrencySymbol } from '@/lib/utils/currency'
 
 // ✅ Configuration des plans
 const PLANS = {
-  free: { label: 'Gratuit', priceFcfa: 0, priceEur: 0, priceUsd: 0 },
-  standard: { label: 'Standard', priceFcfa: 2000, priceEur: 9.99, priceUsd: 9.99 },
-  prestige: { label: 'Prestige', priceFcfa: 5000, priceEur: 19.99, priceUsd: 19.99 },
-  vip: { label: 'VIP / Illimité', priceFcfa: 10000, priceEur: 39.99, priceUsd: 39.99 },
+  free: { label: 'Gratuit', priceFcfa: 0, priceEur: 0, priceUsd: 0, features: ['Lien RSVP partageable', 'Tableau de bord basique'] },
+  standard: {
+    label: 'Standard',
+    priceFcfa: 2000,
+    priceEur: 9.99,
+    priceUsd: 9.99,
+    features: ['Jusqu\'à 100 invités', 'Tableau statistique', 'Export PDF', '5 styles d\'invitation'],
+  },
+  prestige: {
+    label: 'Prestige',
+    priceFcfa: 5000,
+    priceEur: 19.99,
+    priceUsd: 19.99,
+    features: ['Jusqu\'à 500 invités', 'QR Codes sécurisés', 'Export Excel + PDF HD', '50 styles premium'],
+  },
+  vip: {
+    label: 'VIP / Illimité',
+    priceFcfa: 10000,
+    priceEur: 39.99,
+    priceUsd: 39.99,
+    features: ['Invités illimités', 'Support prioritaire WhatsApp', 'Sans mention "Propulsé par"', 'Tout Prestige inclus'],
+  },
 }
+
+const PLAN_ORDER = ['free', 'standard', 'prestige', 'vip'] as const
 
 type PaymentMethod = 'mobile_money' | 'card'
 
@@ -53,33 +73,53 @@ export default function CheckoutPage() {
   const plan = PLANS[planType as keyof typeof PLANS] || PLANS.standard
   const submitting = submittingMethod !== null
 
+  // ✅ Upsell : propose le forfait juste au-dessus, avec le delta de prix réel
+  // (calculé, jamais inventé) — le saut Standard → Prestige ne coûte souvent
+  // que quelques milliers de FCFA de plus pour 5x plus d'invités.
+  const currentIndex = PLAN_ORDER.indexOf(planType as typeof PLAN_ORDER[number])
+  const nextPlanType = currentIndex >= 0 && currentIndex < PLAN_ORDER.length - 1 ? PLAN_ORDER[currentIndex + 1] : null
+  const nextPlan = nextPlanType ? PLANS[nextPlanType] : null
+  const nextPlanPrice = nextPlanType ? getPriceForCurrency(currency, nextPlanType) : null
+  const upsellDelta = nextPlanPrice !== null ? Math.round((nextPlanPrice - originalPrice) * 100) / 100 : null
+
+  const switchToPlan = (targetPlan: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('plan', targetPlan)
+    router.replace(`/fr/events/checkout?${params.toString()}`)
+  }
+
+  // Détection de la devise par géolocalisation IP — une seule fois au montage.
   useEffect(() => {
-    const fetchCurrency = async () => {
+    const detectCurrency = async () => {
       try {
         const res = await fetch('https://ipapi.co/json/')
         const data = await res.json()
-        const countryCode = data.country_code
-        const detectedCurrency = getCurrencyByCountry(countryCode)
-        setCurrency(detectedCurrency)
-
-        const basePrice = getPriceForCurrency(detectedCurrency, planType)
-        setOriginalPrice(basePrice)
-        setPrice(basePrice)
-        setFinalPrice(basePrice)
-        setSymbol(getCurrencySymbol(detectedCurrency))
+        setCurrency(getCurrencyByCountry(data.country_code))
       } catch {
         setCurrency('USD')
-        const basePrice = getPriceForCurrency('USD', planType)
-        setOriginalPrice(basePrice)
-        setPrice(basePrice)
-        setFinalPrice(basePrice)
-        setSymbol('$')
       }
       setLoading(false)
     }
 
-    fetchCurrency()
-  }, [planType])
+    detectCurrency()
+  }, [])
+
+  // Synchronise le prix affiché avec la devise, le plan choisi (via l'upsell
+  // ou le sélecteur) et une éventuelle réduction déjà appliquée — source
+  // unique de vérité pour éviter qu'un changement de plan n'efface
+  // silencieusement le code promo actif.
+  useEffect(() => {
+    const basePrice = getPriceForCurrency(currency, planType)
+    setOriginalPrice(basePrice)
+    setSymbol(getCurrencySymbol(currency))
+
+    const computedFinal = promoApplied && discountPercent > 0
+      ? Math.round(basePrice * (1 - discountPercent / 100) * 100) / 100
+      : basePrice
+
+    setPrice(basePrice)
+    setFinalPrice(computedFinal)
+  }, [currency, planType, promoApplied, discountPercent])
 
   // ✅ Validation du code promo
   const applyPromoCode = async () => {
@@ -107,9 +147,7 @@ export default function CheckoutPage() {
       }
 
       const discount = result.discount_percent ?? 10
-      const newPrice = originalPrice * (1 - discount / 100)
       setDiscountPercent(discount)
-      setFinalPrice(Math.round(newPrice * 100) / 100)
       setPromoApplied(true)
       setAmbassadorId(result.ambassador_id)
       setPromoError(result.already_referred ? result.message : null)
@@ -124,7 +162,6 @@ export default function CheckoutPage() {
   const removePromoCode = () => {
     setPromoApplied(false)
     setPromoCode('')
-    setFinalPrice(originalPrice)
     setAmbassadorId(null)
     setPromoError(null)
     setDiscountPercent(0)
@@ -253,14 +290,7 @@ export default function CheckoutPage() {
                         ? 'bg-[#1E3A8A] text-white'
                         : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                     }`}
-                    onClick={() => {
-                      setCurrency(cur)
-                      const newPrice = getPriceForCurrency(cur, planType)
-                      setOriginalPrice(newPrice)
-                      setPrice(newPrice)
-                      setFinalPrice(newPrice)
-                      setSymbol(getCurrencySymbol(cur))
-                    }}
+                    onClick={() => setCurrency(cur)}
                   >
                     {cur === 'XOF' ? 'FCFA' : cur === 'EUR' ? '€' : '$'}
                   </button>
@@ -291,6 +321,45 @@ export default function CheckoutPage() {
                   )}
                   <p className="text-sm text-gray-500 -mt-1">Paiement unique</p>
                 </div>
+
+                {/* Récap de ce qui est inclus — rassure au moment où le doute
+                    apparaît le plus (juste avant de sortir la carte/le mobile money) */}
+                <div className="space-y-1.5 bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-[#1E3A8A] uppercase tracking-wide">
+                    Inclus dans {plan.label}
+                  </p>
+                  <ul className="space-y-1">
+                    {plan.features.map((feature, idx) => (
+                      <li key={idx} className="flex items-center gap-2 text-sm text-gray-600">
+                        <Check className="w-3.5 h-3.5 text-[#10B981] flex-shrink-0" />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Nudge d'upsell — montre l'écart de prix réel vers le forfait
+                    supérieur pendant que l'utilisateur a déjà sa carte/son
+                    mobile money en main. */}
+                {nextPlan && upsellDelta !== null && (
+                  <motion.button
+                    type="button"
+                    onClick={() => switchToPlan(nextPlanType!)}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full text-left p-3 rounded-lg border-2 border-dashed border-[#F59E0B]/50 bg-[#F59E0B]/5 hover:bg-[#F59E0B]/10 hover:border-[#F59E0B] transition-colors flex items-center justify-between gap-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-[#F59E0B] flex-shrink-0" />
+                      <span className="text-sm text-gray-700">
+                        <span className="font-semibold text-[#1E3A8A]">Passer à {nextPlan.label}</span>
+                        {' '}pour seulement{' '}
+                        <span className="font-semibold text-[#F59E0B]">+{upsellDelta} {symbol}</span>
+                      </span>
+                    </div>
+                    <span className="text-xs font-medium text-[#1E3A8A] whitespace-nowrap">Changer →</span>
+                  </motion.button>
+                )}
 
                 {error && (
                   <Alert variant="destructive">
@@ -388,9 +457,10 @@ export default function CheckoutPage() {
                   </button>
                 </div>
 
-                <p className="text-center text-xs text-gray-400">
-                  Paiement sécurisé via FedaPay. Vous serez redirigé automatiquement.
-                </p>
+                <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+                  <ShieldCheck className="w-4 h-4 text-[#10B981]" />
+                  <span>Paiement sécurisé via FedaPay. Vous serez redirigé automatiquement.</span>
+                </div>
               </CardContent>
             </Card>
           </AnimatedSection>

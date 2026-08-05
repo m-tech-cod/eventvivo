@@ -23,7 +23,6 @@ export function PricingSection() {
         'Lien RSVP partageable',
         'Miniature de la photo',
         'Tableau de bord basique',
-        '1 style d\'invitation',
       ],
       icon: <Star className="w-5 h-5" />,
       iconColor: '#6B7280',
@@ -43,7 +42,6 @@ export function PricingSection() {
         'RSVP avec miniature',
         'Tableau statistique',
         'Export PDF (1, 4, 10 cartes)',
-        '5 styles d\'invitation',
       ],
       icon: <Sparkles className="w-5 h-5" />,
       iconColor: '#1E3A8A',
@@ -62,7 +60,6 @@ export function PricingSection() {
       features: [
         'QR Codes sécurisés',
         'Export Excel + PDF HD',
-        '50 styles premium',
         'Contrôle d\'accès',
       ],
       icon: <Crown className="w-5 h-5" />,
@@ -145,9 +142,11 @@ export function PricingSection() {
         </motion.div>
 
         {/* Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 lg:items-end">
           {plans.map((plan, index) => {
             const { price, symbol } = getPrice(plan)
+            const guestsCount = plan.guests === 'Illimité' ? null : parseInt(plan.guests, 10)
+            const perGuest = price > 0 && guestsCount ? price / guestsCount : null
 
             return (
               <BounceOnHover key={plan.id} className="h-full">
@@ -158,13 +157,15 @@ export function PricingSection() {
                   viewport={{ once: true }}
                   className={`relative h-full rounded-2xl flex flex-col p-6 transition-all duration-300 ${
                     plan.popular
-                      ? 'border-2 border-[#F59E0B] shadow-xl shadow-[#F59E0B]/10 bg-white'
+                      ? 'border-2 border-[#F59E0B] shadow-2xl shadow-[#F59E0B]/25 bg-gradient-to-b from-[#F59E0B]/[0.06] to-white lg:scale-105 lg:py-8 z-10'
+                      : plan.id === 'free'
+                      ? 'border border-gray-100 bg-gray-50/60 opacity-90 hover:opacity-100 hover:shadow-md'
                       : 'border-2 border-gray-100 hover:border-[#1E3A8A]/20 hover:shadow-lg bg-white'
                   }`}
                 >
                   {/* Badge populaire */}
                   {plan.popular && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#F59E0B] text-[#1E3A8A] px-4 py-1 text-xs font-bold rounded-full whitespace-nowrap shadow-sm">
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#F59E0B] text-[#1E3A8A] px-5 py-1.5 text-xs font-bold rounded-full whitespace-nowrap shadow-lg shadow-[#F59E0B]/30">
                       ⭐ Le plus choisi
                     </div>
                   )}
@@ -186,7 +187,7 @@ export function PricingSection() {
                   {/* Prix */}
                   <div className="mb-4">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold text-[#1E3A8A]">
+                      <span className={`font-bold text-[#1E3A8A] ${plan.popular ? 'text-4xl' : 'text-3xl'}`}>
                         {price === 0 ? 'Gratuit' : price.toLocaleString()}
                       </span>
                       {price > 0 && (
@@ -196,6 +197,11 @@ export function PricingSection() {
                     <p className="text-xs text-gray-400 mt-0.5">
                       {plan.guests === 'Illimité' ? '♾️ Invités illimités' : `👥 Jusqu'à ${plan.guests}`}
                     </p>
+                    {perGuest !== null && (
+                      <p className="text-[11px] text-[#10B981] font-medium mt-1">
+                        ≈ {perGuest < 1 ? perGuest.toFixed(2) : Math.round(perGuest)} {symbol} / invité
+                      </p>
+                    )}
                   </div>
 
                   {/* Features */}
@@ -210,7 +216,7 @@ export function PricingSection() {
 
                   {/* CTA */}
                   <Link href={`/fr/events/choose-plan?plan=${plan.id}`} className="block">
-                    <Button className={`w-full rounded-xl py-5 text-sm ${buttonClass(plan.buttonStyle)}`}>
+                    <Button className={`w-full rounded-xl text-sm transition-transform ${plan.popular ? 'py-6 text-base hover:scale-[1.02]' : 'py-5'} ${buttonClass(plan.buttonStyle)}`}>
                       {plan.button}
                     </Button>
                   </Link>

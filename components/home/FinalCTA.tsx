@@ -12,6 +12,7 @@ export function FinalCTA() {
       src="/images/interieur.webp"
       animate="zoom" overlayOpacity={0.35}
       className="py-12 px-4"
+      priority={false}
     >
       <div className="container mx-auto max-w-3xl text-center relative z-10">
         <motion.div
@@ -40,6 +41,14 @@ export function FinalCTA() {
               <Button className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-bold px-8 py-6 text-base md:text-lg rounded-xl shadow-lg shadow-[#F59E0B]/25 hover:shadow-xl transition-all duration-300 group">
                 <span>Créer mon événement gratuitement</span>
                 <ArrowRight className="w-5 h-5 flex-shrink-0 group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </Link>
+            <Link href="/fr/events/choose-plan" className="w-full sm:w-auto">
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto bg-white/10 hover:bg-white/20 text-white border-2 border-white/40 hover:border-white/60 backdrop-blur-sm px-8 py-6 text-base md:text-lg rounded-xl transition-all duration-300"
+              >
+                Voir les forfaits
               </Button>
             </Link>
           </div>

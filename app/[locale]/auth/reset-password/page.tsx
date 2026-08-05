@@ -1,8 +1,9 @@
 'use client'
 
 import { ArrowLeft } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
+import HCaptcha from '@hcaptcha/react-hcaptcha'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
@@ -19,21 +20,66 @@ export default function ResetPasswordPage() {
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
   const { resetPassword } = useAuth()
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const captchaRef = useRef<HCaptcha>(null)
+
+  const logOutcome = async (event_type: string, details?: Record<string, unknown>) => {
+    try {
+      await fetch('/api/auth/log-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_type, details }),
+      })
+    } catch {
+      // La journalisation ne doit jamais bloquer le parcours utilisateur.
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
+    if (!captchaToken) {
+      setError('Merci de valider le CAPTCHA avant de continuer')
+      setLoading(false)
+      return
+    }
+
     try {
-      const result = await resetPassword(email)
+      const guardRes = await fetch('/api/auth/guard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset_password', identifier: email, captchaToken }),
+      })
+      const guard = await guardRes.json()
+
+      if (!guard.allowed) {
+        setError(
+          guard.error === 'rate_limited'
+            ? 'Trop de tentatives, réessayez dans quelques minutes'
+            : 'Échec de la vérification CAPTCHA, réessayez'
+        )
+        captchaRef.current?.resetCaptcha()
+        setCaptchaToken(null)
+        setLoading(false)
+        return
+      }
+
+      const result = await resetPassword(email, captchaToken)
+      captchaRef.current?.resetCaptcha()
+      setCaptchaToken(null)
+
       if (result.success) {
+        await logOutcome('reset_password_requested', { email })
         setSuccess(true)
       } else {
         setError(result.error || "Erreur lors de l'envoi de l'email")
       }
     } catch (err: any) {
       setError(err.message)
+      captchaRef.current?.resetCaptcha()
+      setCaptchaToken(null)
     } finally {
       setLoading(false)
     }
@@ -144,6 +190,15 @@ export default function ResetPasswordPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     className="border-gray-300 focus:border-[#1E3A8A] focus:ring-[#1E3A8A]"
+                  />
+                </div>
+
+                <div className="flex justify-center">
+                  <HCaptcha
+                    ref={captchaRef}
+                    sitekey={process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY!}
+                    onVerify={(token) => setCaptchaToken(token)}
+                    onExpire={() => setCaptchaToken(null)}
                   />
                 </div>
 

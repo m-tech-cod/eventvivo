@@ -47,7 +47,17 @@ export async function POST(request: NextRequest) {
       .update(rawBody)
       .digest('hex')
 
-    if (signature !== expectedSignature) {
+    // Comparaison en temps constant : une comparaison `!==` classique sort
+    // dès le premier octet différent, ce qui fuit (via le timing de réponse)
+    // des informations sur la signature attendue à un attaquant qui
+    // bombarderait ce endpoint public de tentatives.
+    const signatureBuffer = Buffer.from(signature)
+    const expectedBuffer = Buffer.from(expectedSignature)
+    const signatureValid =
+      signatureBuffer.length === expectedBuffer.length &&
+      crypto.timingSafeEqual(signatureBuffer, expectedBuffer)
+
+    if (!signatureValid) {
       console.error('❌ Signature invalide')
       return NextResponse.json({ error: 'Signature invalide' }, { status: 401 })
     }

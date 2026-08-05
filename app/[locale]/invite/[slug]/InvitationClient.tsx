@@ -1,34 +1,27 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import Image from 'next/image'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react'
+import { motion } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Calendar, MapPin, Clock, Users, CheckCircle, XCircle, Sparkles } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { BackgroundImage } from '@/components/ui/BackgroundImage'
 
 interface InvitationClientProps {
   slug: string
+  // Déjà chargé côté serveur par page.tsx (une seule requête Supabase
+  // partagée avec generateMetadata via React cache()) — évite un fetch
+  // client + spinner redondants au premier rendu.
+  initialEvent: any
 }
 
-function normalizePhone(phone: string) {
-  return phone.replace(/[\s.\-()]/g, '')
-}
-
-export default function InvitationClient({ slug }: InvitationClientProps) {
-  const supabase = createClient()
-
-  const [loading, setLoading] = useState(true)
-  const [event, setEvent] = useState<any>(null)
+export default function InvitationClient({ slug, initialEvent }: InvitationClientProps) {
+  const [event] = useState(initialEvent)
   const [existingRSVP, setExistingRSVP] = useState<any>(null)
   const [invitationId, setInvitationId] = useState<string | null>(null)
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null)
-  const [notFound, setNotFound] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [guestName, setGuestName] = useState('')
@@ -47,33 +40,6 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
     elegant: 'bg-white/90 backdrop-blur-sm border border-[#D4A017] rounded-xl shadow-2xl',
     luxe: 'bg-white/90 backdrop-blur-sm border-2 border-[#F59E0B] rounded-xl shadow-2xl',
   }
-
-  // Ne charge que l'événement. Chaque invité est individuel : on ne sait
-  // qui il est qu'une fois qu'il a saisi son nom + téléphone (voir
-  // handleLookup / handleRSVP), donc pas de préchargement d'invitation ici.
-  useEffect(() => {
-    const fetchEvent = async () => {
-      setLoading(true)
-
-      const { data: eventData, error: eventError } = await supabase
-        .from('events')
-        .select('*')
-        .eq('slug', slug)
-        .single()
-
-      if (eventError || !eventData) {
-        console.error('[InvitationClient] event fetch error:', eventError)
-        setNotFound(true)
-        setLoading(false)
-        return
-      }
-
-      setEvent(eventData)
-      setLoading(false)
-    }
-
-    fetchEvent()
-  }, [slug, supabase])
 
   const applyQrIfNeeded = (inv: { id: string; qr_code_token: string | null }) => {
     if (inv.qr_code_token) {
@@ -96,31 +62,24 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
     setLookupNotFound(false)
 
     try {
-      const { data: found, error: lookupError } = await supabase
-        .from('invitations')
-        .select('*, rsvps(*)')
-        .eq('event_id', event.id)
-        .eq('recipient_phone', normalizePhone(guestPhone))
-        .maybeSingle()
+      const res = await fetch('/api/invitations/lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: event.id, phone: guestPhone }),
+      })
+      const result = await res.json()
 
-      if (lookupError) throw lookupError
-
-      if (!found) {
-        setLookupNotFound(true)
+      if (!res.ok || !result.found) {
+        setLookupNotFound(true) // pas d'invitation, ou pas encore de réponse
         return
       }
 
-      setInvitationId(found.id)
-      applyQrIfNeeded(found)
-
-      if (found.rsvps && found.rsvps.length > 0) {
-        setExistingRSVP(found.rsvps[0])
-      } else {
-        setLookupNotFound(true) // invitation trouvée mais pas encore de réponse
-      }
+      setInvitationId(result.invitation_id)
+      applyQrIfNeeded({ id: result.invitation_id, qr_code_token: result.qr_code_token })
+      setExistingRSVP(result.rsvp)
     } catch (err: any) {
       console.error('[InvitationClient] lookup error:', err)
-      setError(err.message || 'Impossible de retrouver votre réponse pour le moment.')
+      setError('Impossible de retrouver votre réponse pour le moment.')
     } finally {
       setLookingUp(false)
     }
@@ -141,85 +100,27 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
     setError(null)
 
     try {
-      const normalizedPhone = normalizePhone(guestPhone)
-      let invitationIdLocal: string
+      const res = await fetch('/api/invitations/rsvp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: event.id,
+          guest_name: guestName,
+          guest_phone: guestPhone,
+          status,
+          guests,
+        }),
+      })
+      const result = await res.json()
 
-      // Un invité = une ligne `invitations` propre à lui (identifié par
-      // téléphone), pour permettre un comptage correct et un QR code
-      // réellement unique par personne — plutôt qu'une seule invitation
-      // générique partagée entre tous les visiteurs du lien public.
-      const { data: existingInvitation } = await supabase
-        .from('invitations')
-        .select('id')
-        .eq('event_id', event.id)
-        .eq('recipient_phone', normalizedPhone)
-        .maybeSingle()
-
-      if (existingInvitation) {
-        invitationIdLocal = existingInvitation.id
-      } else {
-        const { data: newInvitation, error: invError } = await supabase
-          .from('invitations')
-          .insert({
-            event_id: event.id,
-            recipient_name: guestName.trim(),
-            recipient_phone: normalizedPhone,
-            unique_link: `inv-${slug}-${crypto.randomUUID()}`,
-            status: 'responded',
-          })
-          .select('id')
-          .single()
-
-        if (invError) throw invError
-        invitationIdLocal = newInvitation.id
+      if (!res.ok || !result.success) {
+        throw new Error("Une erreur est survenue lors de l'envoi de votre réponse.")
       }
 
-      setInvitationId(invitationIdLocal)
+      setInvitationId(result.invitation_id)
 
-      const { data: existingRsvp } = await supabase
-        .from('rsvps')
-        .select('id')
-        .eq('invitation_id', invitationIdLocal)
-        .maybeSingle()
-
-      if (existingRsvp) {
-        const { error: updateError } = await supabase
-          .from('rsvps')
-          .update({
-            status: status,
-            number_of_guests: status === 'attending' ? guests : 0,
-            responded_at: new Date().toISOString(),
-          })
-          .eq('id', existingRsvp.id)
-
-        if (updateError) throw updateError
-      } else {
-        const { error: rsvpError } = await supabase
-          .from('rsvps')
-          .insert({
-            invitation_id: invitationIdLocal,
-            status: status,
-            number_of_guests: status === 'attending' ? guests : 0,
-            responded_at: new Date().toISOString(),
-          })
-
-        if (rsvpError) throw rsvpError
-      }
-
-      await supabase
-        .from('invitations')
-        .update({ status: 'responded' })
-        .eq('id', invitationIdLocal)
-
-      if (status === 'attending' && event.is_qr_active) {
-        const qrToken = crypto.randomUUID()
-
-        await supabase
-          .from('invitations')
-          .update({ qr_code_token: qrToken })
-          .eq('id', invitationIdLocal)
-
-        applyQrIfNeeded({ id: invitationIdLocal, qr_code_token: qrToken })
+      if (status === 'attending' && result.qr_code_token) {
+        applyQrIfNeeded({ id: result.invitation_id, qr_code_token: result.qr_code_token })
       }
 
       setSuccess(status === 'attending' ? 'Merci pour votre confirmation !' : 'Nous avons bien pris en compte votre réponse.')
@@ -232,52 +133,15 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1E3A8A]"></div>
-      </div>
-    )
-  }
-
-  if (notFound || !event) {
-    return (
-      <BackgroundImage src="/images/foule.webp" animate="zoom" overlayOpacity={0.35}>
-        <div className="flex-1 flex items-center justify-center px-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5 }}
-            className="w-full max-w-md"
-          >
-            <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-2xl">
-              <CardContent className="text-center py-12">
-                <div className="text-6xl mb-4">😕</div>
-                <h2 className="text-xl font-semibold text-[#1E3A8A] mb-2">
-                  Invitation non trouvée
-                </h2>
-                <p className="text-gray-500">
-                  L'invitation que vous recherchez n'existe pas ou a été supprimée.
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-      </BackgroundImage>
-    )
-  }
-
   const styleClass = styleClasses[event.style] || styleClasses.classique
 
+  // Pas de BackgroundImage ici : page.tsx (Server Component) fournit déjà le
+  // fond plein écran de la page avec la même logique de couverture — un
+  // second calque de fond identique doublerait inutilement le poids image
+  // et l'animation de zoom pour un résultat visuellement identique.
   return (
-    <BackgroundImage
-      src={event.cover_image || '/images/foule.webp'}
-      animate="zoom"
-      overlayOpacity={0.35}
-      className="min-h-screen"
-    >
-      <div className="flex-1 overflow-y-auto py-8 px-4">
-        <div className="container mx-auto max-w-2xl">
+    <div className="flex-1 overflow-y-auto py-8 px-4">
+      <div className="container mx-auto max-w-2xl">
           {/* En-tête */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -613,6 +477,33 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
             </motion.div>
           )}
 
+          {existingRSVP && !success && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.15 }}
+            >
+              <Card className="mt-4 bg-white/90 backdrop-blur-sm border border-[#F59E0B]/30 shadow-md">
+                <CardContent className="text-center py-5">
+                  <p className="text-sm text-gray-700">
+                    ✨ Vous aussi, vous organisez un événement ?
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1 mb-3">
+                    Créez vos invitations et suivez vos RSVP en temps réel avec Eventvivo.
+                  </p>
+                  <a
+                    href="https://eventvivo.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                  >
+                    Créer mon événement gratuitement
+                  </a>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -629,8 +520,7 @@ export default function InvitationClient({ slug }: InvitationClientProps) {
               Propulsé par Eventvivo
             </p>
           </motion.div>
-        </div>
       </div>
-    </BackgroundImage>
+    </div>
   )
 }

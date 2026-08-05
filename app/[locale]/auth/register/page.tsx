@@ -27,6 +27,18 @@ export default function RegisterPage() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
   const captchaRef = useRef<HCaptcha>(null)
 
+  const logOutcome = async (event_type: string, details?: Record<string, unknown>) => {
+    try {
+      await fetch('/api/auth/log-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_type, details }),
+      })
+    } catch {
+      // La journalisation ne doit jamais bloquer le parcours utilisateur.
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -50,12 +62,6 @@ export default function RegisterPage() {
       return
     }
 
-    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-      setError('Le mot de passe doit contenir au moins une lettre et un chiffre')
-      setLoading(false)
-      return
-    }
-
     if (!captchaToken) {
       setError('Merci de valider le CAPTCHA avant de continuer')
       setLoading(false)
@@ -63,17 +69,41 @@ export default function RegisterPage() {
     }
 
     try {
-      const result = await signUp({ firstName, lastName, email, password, confirmPassword, captchaToken })
-      if (!result.success) {
-        setError(result.error || "Erreur d'inscription")
+      const guardRes = await fetch('/api/auth/guard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'signup', identifier: email, captchaToken }),
+      })
+      const guard = await guardRes.json()
+
+      if (!guard.allowed) {
+        setError(
+          guard.error === 'rate_limited'
+            ? 'Trop de tentatives, réessayez dans quelques minutes'
+            : 'Échec de la vérification CAPTCHA, réessayez'
+        )
         captchaRef.current?.resetCaptcha()
         setCaptchaToken(null)
+        setLoading(false)
+        return
       }
+
+      const result = await signUp({ firstName, lastName, email, password, confirmPassword, captchaToken })
+      captchaRef.current?.resetCaptcha()
+      setCaptchaToken(null)
+
+      if (!result.success) {
+        setError(result.error || "Erreur d'inscription")
+        await logOutcome('signup_failed', { email })
+        setLoading(false)
+        return
+      }
+
+      await logOutcome('signup_success')
     } catch (err: any) {
       setError(err.message)
       captchaRef.current?.resetCaptcha()
       setCaptchaToken(null)
-    } finally {
       setLoading(false)
     }
   }
