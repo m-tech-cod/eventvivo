@@ -114,6 +114,13 @@ export default function InvitationClient({ slug, initialEvent }: InvitationClien
       const result = await res.json()
 
       if (!res.ok || !result.success) {
+        if (result.error === 'quota_exceeded') {
+          throw new Error(
+            result.remaining > 0
+              ? `Il ne reste plus que ${result.remaining} place${result.remaining > 1 ? 's' : ''} pour cet événement — merci de réduire le nombre d'accompagnateurs.`
+              : "Cet événement a atteint son nombre maximum d'invités."
+          )
+        }
         throw new Error("Une erreur est survenue lors de l'envoi de votre réponse.")
       }
 

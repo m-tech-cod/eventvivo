@@ -44,6 +44,153 @@ function imageFormatFromDataUrl(dataUrl: string): 'PNG' | 'JPEG' {
   return dataUrl.includes('image/png') ? 'PNG' : 'JPEG'
 }
 
+const NAVY = '#1E3A8A'
+const AMBER = '#F59E0B'
+const AMBER_DARK = '#B45309'
+const GRAY_TEXT = '#64748B'
+const GRAY_LINE = '#CBD5E1'
+const BADGE_BG = '#EEF2FF'
+const SHADOW = '#D9E0EA'
+
+interface DrawGuestCardParams {
+  x: number
+  y: number
+  cardWidth: number
+  cardHeight: number
+  imageHeight: number
+  backgroundDataUrl: string | null
+  qrDataUrl: string | null
+  eventName: string
+  eventDateLabel: string
+  eventLocation?: string | null
+  guestName: string
+  guestExtra: number
+  cardsPerPage: 1 | 4 | 10
+}
+
+// Dessine une carte "billet" : photo en médaillon (matte blanc), bandeau
+// accent, séparateur pointillé façon souche de ticket, badge invité, encart
+// QR — le tout en primitives vectorielles jsPDF (aucune police/asset externe
+// requis, donc rien à embarquer/héberger en plus).
+function drawGuestCard(doc: jsPDF, p: DrawGuestCardParams) {
+  const { x, y, cardWidth, cardHeight, imageHeight, backgroundDataUrl, qrDataUrl, eventName, eventDateLabel, eventLocation, guestName, guestExtra, cardsPerPage } = p
+  const compact = cardsPerPage === 10
+  const roomy = cardsPerPage === 1
+
+  // Ombre douce (légèrement décalée derrière la carte)
+  doc.setFillColor(SHADOW)
+  doc.roundedRect(x + 0.6, y + 0.9, cardWidth, cardHeight, 3, 3, 'F')
+
+  // Carte : fond blanc + liseré navy
+  doc.setFillColor('#FFFFFF')
+  doc.setDrawColor(NAVY)
+  doc.setLineWidth(0.35)
+  doc.roundedRect(x, y, cardWidth, cardHeight, 3, 3, 'FD')
+
+  // Photo en médaillon (marge blanche façon matte de cadre)
+  const inset = 1.6
+  const photoW = cardWidth - inset * 2
+  const photoH = imageHeight - inset * 1.4
+  if (backgroundDataUrl) {
+    try {
+      doc.addImage(backgroundDataUrl, imageFormatFromDataUrl(backgroundDataUrl), x + inset, y + inset, photoW, photoH)
+    } catch {
+      // si l'image échoue, on continue sans elle
+    }
+  }
+
+  // Bandeau accent (signature de marque)
+  const accentY = y + inset + photoH
+  const accentH = compact ? 1.1 : 1.6
+  doc.setFillColor(AMBER)
+  doc.rect(x + inset, accentY, photoW, accentH, 'F')
+
+  const panelY = accentY + accentH
+  const panelHeight = y + cardHeight - panelY
+
+  // Colonne QR (à droite) + séparateur pointillé façon souche de billet
+  const qrSize = Math.min(panelHeight - (compact ? 3 : 5), cardWidth * 0.26)
+  const qrBoxX = x + cardWidth - qrSize - (compact ? 2.5 : 4)
+  const dividerX = qrBoxX - (compact ? 1.8 : 3)
+
+  if (qrDataUrl) {
+    const qrY = panelY + (panelHeight - qrSize) / 2
+    doc.setDrawColor(GRAY_LINE)
+    doc.setLineWidth(0.25)
+    doc.roundedRect(qrBoxX - 0.8, qrY - 0.8, qrSize + 1.6, qrSize + 1.6, 1, 1, 'D')
+    try {
+      doc.addImage(qrDataUrl, imageFormatFromDataUrl(qrDataUrl), qrBoxX, qrY, qrSize, qrSize)
+    } catch {
+      // si le QR échoue, on continue sans lui
+    }
+    if (!compact) {
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(GRAY_TEXT)
+      doc.setFontSize(4.8)
+      doc.text('SCANNEZ', qrBoxX + qrSize / 2, qrY + qrSize + 3, { align: 'center' })
+    }
+  }
+
+  doc.setDrawColor(GRAY_LINE)
+  doc.setLineWidth(0.2)
+  doc.setLineDashPattern([0.8, 0.8], 0)
+  doc.line(dividerX, panelY + 1.5, dividerX, y + cardHeight - 1.5)
+  doc.setLineDashPattern([], 0)
+
+  // Bloc texte (à gauche du séparateur)
+  const textX = x + inset + 2
+  const textMaxWidth = dividerX - textX - 1.5
+  let cursorY = panelY + (compact ? 3.4 : roomy ? 5.5 : 4.6)
+
+  if (!compact) {
+    doc.setFont('times', 'italic')
+    doc.setTextColor(AMBER_DARK)
+    doc.setFontSize(roomy ? 7.5 : 6.5)
+    doc.text("VOUS ÊTES INVITÉ(E)", textX, cursorY, { maxWidth: textMaxWidth })
+    cursorY += roomy ? 5.5 : 4.5
+  }
+
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(NAVY)
+  doc.setFontSize(roomy ? 13 : compact ? 6.5 : 9.5)
+  doc.text(eventName, textX, cursorY, { maxWidth: textMaxWidth })
+  cursorY += roomy ? 6.5 : compact ? 3.8 : 5
+
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(GRAY_TEXT)
+  doc.setFontSize(roomy ? 9 : compact ? 5.2 : 7.2)
+  doc.text(`• ${eventDateLabel}`, textX, cursorY, { maxWidth: textMaxWidth })
+  cursorY += roomy ? 5.5 : compact ? 3.4 : 4.4
+
+  if (eventLocation && !compact) {
+    doc.text(`• ${eventLocation}`, textX, cursorY, { maxWidth: textMaxWidth })
+  }
+
+  // Badge invité (pilule) en bas du bloc texte
+  const guestLabel = guestExtra > 0 ? `${guestName} (+${guestExtra})` : guestName
+  const badgeFontSize = roomy ? 9.5 : compact ? 5.5 : 7.5
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(badgeFontSize)
+  const guestTextWidth = Math.min(doc.getTextWidth(guestLabel), textMaxWidth - 4)
+  const badgeH = badgeFontSize * 0.42
+  const badgeY = y + cardHeight - inset - badgeH - (compact ? 1 : 1.8)
+  doc.setFillColor(BADGE_BG)
+  doc.roundedRect(textX - 1.2, badgeY, guestTextWidth + 4.4, badgeH + 2, badgeH / 2 + 0.4, badgeH / 2 + 0.4, 'F')
+  doc.setTextColor(NAVY)
+  doc.text(guestLabel, textX + 1, badgeY + badgeH + 0.4, { maxWidth: textMaxWidth - 2 })
+
+  // Signature de marque (coin bas-droit, uniquement quand il y a la place)
+  if (roomy) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(6)
+    doc.setTextColor(NAVY)
+    const evLabel = 'Event'
+    doc.text(evLabel, x + cardWidth - inset - doc.getTextWidth(evLabel) - doc.getTextWidth('vivo'), y + cardHeight - inset - 0.8)
+    doc.setTextColor(AMBER)
+    doc.text('vivo', x + cardWidth - inset - doc.getTextWidth('vivo'), y + cardHeight - inset - 0.8)
+  }
+}
+
 // Grilles disponibles pour l'impression (colonnes x lignes par page A4)
 const LAYOUTS: Record<number, { cols: number; rows: number }> = {
   1: { cols: 1, rows: 1 },
@@ -136,73 +283,19 @@ export default function PDFPage() {
         const x = margin + col * (cardWidth + gap)
         const y = margin + row * (cardHeight + gap)
 
-        // Cadre de la carte
-        doc.setDrawColor('#1E3A8A')
-        doc.setLineWidth(0.3)
-        doc.roundedRect(x, y, cardWidth, cardHeight, 2, 2)
+        const qrUrl = guest.qrToken ? buildQrUrl(event.slug, guest.id) : null
+        const qrDataUrl = qrUrl ? await urlToDataUrl(qrUrl).catch(() => null) : null
 
-        // Image de fond (photo de couverture ou style)
-        if (backgroundDataUrl) {
-          try {
-            doc.addImage(
-              backgroundDataUrl,
-              imageFormatFromDataUrl(backgroundDataUrl),
-              x + 0.5,
-              y + 0.5,
-              cardWidth - 1,
-              imageHeight - 1
-            )
-          } catch {
-            // si l'image échoue, on continue sans elle
-          }
-        }
-
-        // Panneau blanc (infos + QR)
-        const panelY = y + imageHeight
-        const panelHeight = cardHeight - imageHeight
-        doc.setFillColor('#FFFFFF')
-        doc.rect(x + 0.5, panelY, cardWidth - 1, panelHeight - 0.5, 'F')
-
-        const qrSize = Math.min(panelHeight - 4, cardWidth * 0.28)
-        const textX = x + 3
-        const textMaxWidth = cardWidth - qrSize - 8
-
-        doc.setTextColor('#1E3A8A')
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(cardsPerPage === 1 ? 14 : cardsPerPage === 4 ? 10 : 7)
-        doc.text(event.name, textX, panelY + 5, { maxWidth: textMaxWidth })
-
-        doc.setFont('helvetica', 'normal')
-        doc.setTextColor('#555555')
-        doc.setFontSize(cardsPerPage === 1 ? 10 : cardsPerPage === 4 ? 8 : 6)
-        doc.text(eventDateLabel, textX, panelY + (cardsPerPage === 1 ? 12 : 10), { maxWidth: textMaxWidth })
-        if (event.location) {
-          doc.text(event.location, textX, panelY + (cardsPerPage === 1 ? 18 : 14), { maxWidth: textMaxWidth })
-        }
-
-        doc.setTextColor('#1E3A8A')
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(cardsPerPage === 1 ? 12 : cardsPerPage === 4 ? 9 : 6.5)
-        const guestLabel = guest.numberOfGuests > 0
-          ? `${guest.name} (+${guest.numberOfGuests})`
-          : guest.name
-        doc.text(guestLabel, textX, panelY + panelHeight - 4, { maxWidth: textMaxWidth })
-
-        // QR code individuel
-        if (guest.qrToken) {
-          const qrUrl = buildQrUrl(event.slug, guest.id)
-          const qrDataUrl = await urlToDataUrl(qrUrl).catch(() => null)
-          if (qrDataUrl) {
-            doc.addImage(
-              qrDataUrl,
-              imageFormatFromDataUrl(qrDataUrl),
-              x + cardWidth - qrSize - 2,
-              panelY + (panelHeight - qrSize) / 2,
-              qrSize,
-              qrSize
-            )
-          }
-        }
+        drawGuestCard(doc, {
+          x, y, cardWidth, cardHeight, imageHeight,
+          backgroundDataUrl, qrDataUrl,
+          eventName: event.name,
+          eventDateLabel,
+          eventLocation: event.location,
+          guestName: guest.name,
+          guestExtra: guest.numberOfGuests,
+          cardsPerPage,
+        })
       }
 
       doc.save(`invitations-${event.slug}.pdf`)

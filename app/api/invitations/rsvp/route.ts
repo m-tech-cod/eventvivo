@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
   const { data: event } = await supabase
     .from('events')
-    .select('id, slug, is_qr_active')
+    .select('id, slug, is_qr_active, max_guests')
     .eq('id', event_id)
     .eq('status', 'active')
     .is('deleted_at', null)
@@ -98,6 +98,31 @@ export async function POST(request: NextRequest) {
     .maybeSingle()
 
   const numberOfGuests = status === 'attending' ? guests : 0
+
+  // Plafond du plan (events.max_guests ; null/0 = illimité) : compte le total
+  // déjà confirmé (1 par invitation "attending" + ses accompagnateurs), en
+  // excluant l'invitation courante pour ne pas se bloquer soi-même en cas de
+  // simple modification de sa propre réponse.
+  if (status === 'attending' && event.max_guests) {
+    const { data: attendingRsvps } = await supabase
+      .from('rsvps')
+      .select('number_of_guests, invitations!inner(event_id)')
+      .eq('invitations.event_id', event_id)
+      .eq('status', 'attending')
+      .neq('invitation_id', invitationId)
+
+    const currentTotal = (attendingRsvps || []).reduce(
+      (sum, r: any) => sum + 1 + (r.number_of_guests || 0),
+      0
+    )
+
+    if (currentTotal + 1 + numberOfGuests > event.max_guests) {
+      return NextResponse.json(
+        { error: 'quota_exceeded', remaining: Math.max(0, event.max_guests - currentTotal - 1) },
+        { status: 409 }
+      )
+    }
+  }
 
   if (existingRsvp) {
     await supabase

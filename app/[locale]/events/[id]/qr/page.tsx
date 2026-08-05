@@ -73,19 +73,21 @@ export default function GuestQRDashboardPage() {
     setLoading(false)
   }, [eventId, supabase])
 
+  // Rafraîchissement périodique plutôt qu'un canal Realtime (websocket) :
+  // ce dernier tournait sans filtre par événement (postgres_changes écoutait
+  // TOUTES les lignes de invitations/rsvps, tous événements confondus) et,
+  // depuis le verrouillage des policies RLS, peinait à s'abonner — le retry
+  // en boucle qui en résultait était invisible sur desktop (marge mémoire)
+  // mais faisait planter l'onglet sur Safari iOS ("This page couldn't load").
   useEffect(() => {
     fetchData()
 
-    const channel = supabase
-      .channel(`guests-${eventId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rsvps' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'invitations' }, fetchData)
-      .subscribe()
+    const interval = setInterval(fetchData, 20000)
 
     return () => {
-      supabase.removeChannel(channel)
+      clearInterval(interval)
     }
-  }, [eventId, fetchData, supabase])
+  }, [eventId, fetchData])
 
   const downloadQRCode = async (qrUrl: string, guestName: string) => {
     try {
