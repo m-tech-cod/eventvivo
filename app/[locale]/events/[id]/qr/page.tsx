@@ -155,12 +155,12 @@ export default function GuestQRDashboardPage() {
 
           {!event.is_qr_active && (
             <AnimatedSection>
-              <div className="mb-6 flex items-center justify-between gap-3 bg-white/95 backdrop-blur-sm rounded-lg px-4 py-3 text-sm">
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3 bg-white/95 backdrop-blur-sm rounded-lg px-4 py-3 text-sm">
                 <span className="text-gray-600">
                   💡 Le contrôle d'accès par QR Code individuel n'est pas activé sur ce plan.
                 </span>
-                <Link href={`/fr/events/choose-plan?upgrade=${event.id}`}>
-                  <Button size="sm" className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] shrink-0">
+                <Link href={`/fr/events/choose-plan?upgrade=${event.id}`} className="w-full sm:w-auto">
+                  <Button size="sm" className="w-full sm:w-auto whitespace-nowrap bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A]">
                     Passer à Prestige
                   </Button>
                 </Link>

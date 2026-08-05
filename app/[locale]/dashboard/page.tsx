@@ -58,6 +58,7 @@ export default function DashboardPage() {
 
   const [rsvpTrend, setRsvpTrend] = useState<{ date: string; attending: number; declined: number }[]>([])
   const [invitationTrend, setInvitationTrend] = useState<{ date: string; sent: number; responded: number }[]>([])
+  const [receipts, setReceipts] = useState<any[]>([])
 
   const supabase = createClient()
   const router = useRouter()
@@ -97,6 +98,17 @@ export default function DashboardPage() {
 
     fetchUserAndEvents()
   }, [supabase, router])
+
+  // ✅ Reçus de paiement : route dédiée (pas de lecture directe de
+  // `payments` côté client) — voir api/payments/mine.
+  useEffect(() => {
+    if (!user) return
+
+    fetch('/api/payments/mine')
+      .then((res) => res.json())
+      .then((data) => setReceipts(data.payments || []))
+      .catch(() => setReceipts([]))
+  }, [user])
 
   // ✅ Charge les stats/graphiques de l'événement sélectionné
   useEffect(() => {
@@ -547,6 +559,44 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </AnimatedSection>
+
+          {/* Mes reçus */}
+          {receipts.length > 0 && (
+            <AnimatedSection delay={0.5}>
+              <Card className="bg-white/95 backdrop-blur-sm border-0 mt-6">
+                <CardHeader>
+                  <CardTitle className="text-lg text-[#1E3A8A]">Mes reçus</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {receipts.map((receipt) => (
+                      <div
+                        key={receipt.id}
+                        className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                      >
+                        <div>
+                          <p className="font-medium text-[#1E3A8A] capitalize">
+                            {receipt.plan_type} {receipt.events?.name ? `— ${receipt.events.name}` : ''}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {receipt.completed_at && new Date(receipt.completed_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            {' • '}{receipt.final_amount} {receipt.currency || 'FCFA'}
+                          </p>
+                        </div>
+                        <a
+                          href={`/api/payments/${receipt.id}/receipt`}
+                          className="flex items-center gap-1.5 text-sm font-medium text-[#1E3A8A] hover:underline shrink-0"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Télécharger
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </AnimatedSection>
+          )}
         </div>
       </div>
     </BackgroundImage>

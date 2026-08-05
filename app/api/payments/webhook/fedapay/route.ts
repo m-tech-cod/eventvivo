@@ -120,13 +120,19 @@ export async function POST(request: NextRequest) {
 
     const event = payment.events // peut être null si l'événement n'est pas encore créé
 
-    // ✅ 7. Marquer le paiement comme complété
+    // ✅ 7. Marquer le paiement comme complété. Le numéro de reçu est généré
+    // ici (et non plus seulement au moment de l'email, étape 9) pour être
+    // conservé sur la ligne payments — condition nécessaire pour pouvoir
+    // régénérer le même reçu depuis le dashboard plus tard, indépendamment
+    // du succès/échec de l'envoi email.
+    const receiptNumber = generateReceiptNumber()
     const { error: updatePaymentError } = await supabase
       .from('payments')
       .update({
         status: 'completed',
         completed_at: new Date().toISOString(),
         webhook_received_at: new Date().toISOString(),
+        receipt_number: receiptNumber,
       })
       .eq('transaction_id', transaction.id)
 
@@ -193,7 +199,6 @@ export async function POST(request: NextRequest) {
     // ✅ 9. Générer le reçu PDF et envoyer l'email (indépendant de l'existence
     // de l'événement)
     const planName = PLAN_NAMES[payment.plan_type] || payment.plan_type
-    const receiptNumber = generateReceiptNumber()
     const currency = payment.currency || 'XOF'
 
     try {

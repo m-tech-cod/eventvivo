@@ -62,7 +62,7 @@ export default function AdminDashboardPage() {
 
       const { data: payments } = await supabase
         .from('payments')
-        .select('final_amount, status, created_at, plan_type, user_id, profiles(first_name, last_name, email)')
+        .select('id, final_amount, status, created_at, plan_type, user_id, receipt_number, profiles(first_name, last_name, email)')
         .order('created_at', { ascending: false })
 
       // ✅ Seuls les paiements réellement confirmés comptent comme "ventes"
@@ -283,6 +283,7 @@ export default function AdminDashboardPage() {
                           <th className="text-left py-2 text-gray-500 font-medium">Montant</th>
                           <th className="text-left py-2 text-gray-500 font-medium">Statut</th>
                           <th className="text-left py-2 text-gray-500 font-medium">Date</th>
+                          <th className="text-left py-2 text-gray-500 font-medium">Reçu</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -307,6 +308,18 @@ export default function AdminDashboardPage() {
                             </td>
                             <td className="py-2 text-gray-500">
                               {new Date(payment.created_at).toLocaleDateString('fr-FR')}
+                            </td>
+                            <td className="py-2">
+                              {payment.receipt_number ? (
+                                <a
+                                  href={`/api/payments/${payment.id}/receipt`}
+                                  className="text-[#1E3A8A] hover:underline font-medium"
+                                >
+                                  Télécharger
+                                </a>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
                             </td>
                           </tr>
                         ))}
