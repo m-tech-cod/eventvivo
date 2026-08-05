@@ -21,7 +21,7 @@ const CSP_DIRECTIVES = [
   "style-src 'self' 'unsafe-inline' https://hcaptcha.com",
   "img-src 'self' data: blob: https://*.supabase.co https://hcaptcha.com",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co https://hcaptcha.com https://*.hcaptcha.com",
+  "connect-src 'self' https://*.supabase.co https://hcaptcha.com https://*.hcaptcha.com https://formspree.io",
   "frame-src https://hcaptcha.com https://*.hcaptcha.com https://accounts.google.com",
   "object-src 'none'",
   "base-uri 'self'",

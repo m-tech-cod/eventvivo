@@ -128,7 +128,7 @@ export default function UpdatePasswordPage() {
 
   if (!hasRecoverySession) {
     return (
-      <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35}>
+      <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35} className="min-h-screen py-8">
         <div className="flex-1 flex items-center justify-center px-4">
           <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-2xl w-full max-w-md">
             <CardHeader className="text-center">
@@ -151,7 +151,7 @@ export default function UpdatePasswordPage() {
   }
 
   return (
-    <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35}>
+    <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35} className="min-h-screen py-8">
       <div className="flex-1 flex items-center justify-center px-4">
         <motion.div
           initial={{ opacity: 0, y: 30 }}

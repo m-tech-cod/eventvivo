@@ -38,8 +38,16 @@ export async function proxy(request: NextRequest) {
 
   // getUser() (et non getSession()) car il revalide le token auprès de
   // Supabase plutôt que de faire confiance à un cookie potentiellement
-  // périmé/forgé.
-  const { data: { user } } = await supabase.auth.getUser()
+  // périmé/forgé. Enveloppé : un cookie de session corrompu/obsolète (ex.
+  // créé avant un changement de format) ne doit jamais faire planter le
+  // middleware — et donc toute la page — pour une simple session invalide.
+  let user = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  } catch {
+    user = null
+  }
 
   const { pathname } = request.nextUrl
   const isProtected = PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix))

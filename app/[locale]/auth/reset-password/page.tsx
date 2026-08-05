@@ -87,7 +87,7 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35}>
+      <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35} className="min-h-screen py-8">
         <div className="flex-1 flex items-center justify-center px-4">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -136,7 +136,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35}>
+    <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35} className="min-h-screen py-8">
       <div className="flex-1 flex items-center justify-center px-4">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
