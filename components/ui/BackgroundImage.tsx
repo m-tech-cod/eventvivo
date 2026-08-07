@@ -2,7 +2,9 @@
 
 import Image from 'next/image'
 import { motion } from 'framer-motion'
-import { ReactNode } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
+
+const FALLBACK_SRC = '/images/foule.webp'
 
 interface BackgroundImageProps {
   src: string
@@ -33,6 +35,15 @@ export function BackgroundImage({
     center: 'object-center',
     top: 'object-top',
     bottom: 'object-bottom',
+  }
+
+  // ✅ Repli sur l'image par défaut si le chargement échoue (connexion
+  // coupée en cours de route, image de couverture distante indisponible…)
+  // au lieu de laisser l'icône "image cassée" affichée en fond de page.
+  const [imgSrc, setImgSrc] = useState(src)
+  useEffect(() => setImgSrc(src), [src])
+  const handleError = () => {
+    if (imgSrc !== FALLBACK_SRC) setImgSrc(FALLBACK_SRC)
   }
 
   // ✅ Configuration des animations avec le bon type
@@ -70,7 +81,7 @@ export function BackgroundImage({
       {/* ✅ Image avec animation conditionnelle */}
       {animate === 'none' ? (
         <Image
-          src={src}
+          src={imgSrc}
           alt={alt}
           fill
           sizes="100vw"
@@ -78,6 +89,7 @@ export function BackgroundImage({
           priority={priority}
           loading={priority ? undefined : 'lazy'}
           quality={quality}
+          onError={handleError}
         />
       ) : (
         <motion.div
@@ -85,12 +97,13 @@ export function BackgroundImage({
           animate={animationProps}
         >
           <Image
-            src={src}
+            src={imgSrc}
             alt={alt}
             fill
             className={`object-cover ${positionClass[position]}`}
             priority
             quality={90}
+            onError={handleError}
           />
         </motion.div>
       )}

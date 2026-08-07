@@ -67,10 +67,51 @@ export async function POST(request: NextRequest) {
     .eq('recipient_phone', phone)
     .maybeSingle()
 
+  const existingInvitationId = existingInvitation?.id ?? null
+
+  const { data: existingRsvp } = existingInvitationId
+    ? await supabase.from('rsvps').select('id').eq('invitation_id', existingInvitationId).maybeSingle()
+    : { data: null }
+
+  const numberOfGuests = status === 'attending' ? guests : 0
+
+  // Plafond du plan (events.max_guests ; null/0 = illimité) : compte le total
+  // déjà confirmé (1 par invitation "attending" + ses accompagnateurs), en
+  // excluant l'invitation courante pour ne pas se bloquer soi-même en cas de
+  // simple modification de sa propre réponse. Fait AVANT la création de
+  // l'invitation (voir plus bas) : si le quota est dépassé, aucune ligne
+  // `invitations` n'est créée/marquée "responded" pour cet invité — sinon il
+  // apparaîtrait comme "répondu" au dashboard sans RSVP réellement enregistrée.
+  if (status === 'attending' && event.max_guests) {
+    let quotaQuery = supabase
+      .from('rsvps')
+      .select('number_of_guests, invitations!inner(event_id)')
+      .eq('invitations.event_id', event_id)
+      .eq('status', 'attending')
+
+    if (existingInvitationId) {
+      quotaQuery = quotaQuery.neq('invitation_id', existingInvitationId)
+    }
+
+    const { data: attendingRsvps } = await quotaQuery
+
+    const currentTotal = (attendingRsvps || []).reduce(
+      (sum, r: any) => sum + 1 + (r.number_of_guests || 0),
+      0
+    )
+
+    if (currentTotal + 1 + numberOfGuests > event.max_guests) {
+      return NextResponse.json(
+        { error: 'quota_exceeded', remaining: Math.max(0, event.max_guests - currentTotal - 1) },
+        { status: 409 }
+      )
+    }
+  }
+
   let invitationId: string
 
-  if (existingInvitation) {
-    invitationId = existingInvitation.id
+  if (existingInvitationId) {
+    invitationId = existingInvitationId
   } else {
     const { data: newInvitation, error: invError } = await supabase
       .from('invitations')
@@ -89,39 +130,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'creation_failed' }, { status: 500 })
     }
     invitationId = newInvitation.id
-  }
-
-  const { data: existingRsvp } = await supabase
-    .from('rsvps')
-    .select('id')
-    .eq('invitation_id', invitationId)
-    .maybeSingle()
-
-  const numberOfGuests = status === 'attending' ? guests : 0
-
-  // Plafond du plan (events.max_guests ; null/0 = illimité) : compte le total
-  // déjà confirmé (1 par invitation "attending" + ses accompagnateurs), en
-  // excluant l'invitation courante pour ne pas se bloquer soi-même en cas de
-  // simple modification de sa propre réponse.
-  if (status === 'attending' && event.max_guests) {
-    const { data: attendingRsvps } = await supabase
-      .from('rsvps')
-      .select('number_of_guests, invitations!inner(event_id)')
-      .eq('invitations.event_id', event_id)
-      .eq('status', 'attending')
-      .neq('invitation_id', invitationId)
-
-    const currentTotal = (attendingRsvps || []).reduce(
-      (sum, r: any) => sum + 1 + (r.number_of_guests || 0),
-      0
-    )
-
-    if (currentTotal + 1 + numberOfGuests > event.max_guests) {
-      return NextResponse.json(
-        { error: 'quota_exceeded', remaining: Math.max(0, event.max_guests - currentTotal - 1) },
-        { status: 409 }
-      )
-    }
   }
 
   if (existingRsvp) {

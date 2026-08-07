@@ -55,6 +55,7 @@ export default function DashboardPage() {
 
   const [loadingUser, setLoadingUser] = useState(true)
   const [loadingEventData, setLoadingEventData] = useState(false)
+  const [eventsLoadError, setEventsLoadError] = useState(false)
 
   const [rsvpTrend, setRsvpTrend] = useState<{ date: string; attending: number; declined: number }[]>([])
   const [invitationTrend, setInvitationTrend] = useState<{ date: string; sent: number; responded: number }[]>([])
@@ -67,36 +68,43 @@ export default function DashboardPage() {
 
   // ✅ Charge l'utilisateur et TOUS ses événements (un organisateur peut en
   // avoir plusieurs — illimité en payant, un seul gratuit actif à la fois)
-  useEffect(() => {
-    const fetchUserAndEvents = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/fr/auth/login')
-        return
-      }
-      setUser(user)
+  const fetchUserAndEvents = async () => {
+    setLoadingUser(true)
+    setEventsLoadError(false)
 
-      // ✅ Indépendantes l'une de l'autre (dépendent seulement de user.id) —
-      // parallélisées au lieu d'être attendues l'une après l'autre.
-      const [{ data: profile }, { data: eventsData }] = await Promise.all([
-        supabase.from('profiles').select('role').eq('id', user.id).single(),
-        supabase
-          .from('events')
-          .select('id, name, date, slug, plan_type, cover_image')
-          .eq('organizer_id', user.id)
-          .order('date', { ascending: true }),
-      ])
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      router.push('/fr/auth/login')
+      return
+    }
+    setUser(user)
 
-      setUserRole(profile?.role || 'user')
-      setEvents(eventsData || [])
-      if (eventsData && eventsData.length > 0) {
-        setSelectedEventId(eventsData[0].id)
-      }
+    // ✅ Indépendantes l'une de l'autre (dépendent seulement de user.id) —
+    // parallélisées au lieu d'être attendues l'une après l'autre.
+    const [{ data: profile }, { data: eventsData, error: eventsError }] = await Promise.all([
+      supabase.from('profiles').select('role').eq('id', user.id).single(),
+      supabase
+        .from('events')
+        .select('id, name, date, slug, plan_type, cover_image')
+        .eq('organizer_id', user.id)
+        .order('date', { ascending: true }),
+    ])
 
-      setLoadingUser(false)
+    setUserRole(profile?.role || 'user')
+    // ✅ Une erreur réseau/Supabase ne doit pas être confondue avec "0
+    // événement" (message + CTA différents — voir events.length === 0).
+    setEventsLoadError(!!eventsError)
+    setEvents(eventsData || [])
+    if (eventsData && eventsData.length > 0) {
+      setSelectedEventId(eventsData[0].id)
     }
 
+    setLoadingUser(false)
+  }
+
+  useEffect(() => {
     fetchUserAndEvents()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, router])
 
   // ✅ Reçus de paiement : route dédiée (pas de lecture directe de
@@ -208,18 +216,37 @@ export default function DashboardPage() {
                 <div className="w-20 h-20 bg-[#F59E0B]/10 rounded-full flex items-center justify-center mb-4">
                   <Calendar className="w-10 h-10 text-[#F59E0B]" />
                 </div>
-                <h2 className="text-xl font-semibold text-[#1E3A8A] mb-2">
-                  Aucun événement créé
-                </h2>
-                <p className="text-gray-500 text-center mb-6 max-w-md">
-                  Créez votre premier événement pour commencer à utiliser Eventvivo
-                </p>
-                <Link href="/fr/events/choose-plan">
-                  <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-semibold">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Créer un événement
-                  </Button>
-                </Link>
+                {eventsLoadError ? (
+                  <>
+                    <h2 className="text-xl font-semibold text-[#1E3A8A] mb-2">
+                      Connexion impossible
+                    </h2>
+                    <p className="text-gray-500 text-center mb-6 max-w-md">
+                      Vos événements n'ont pas pu être chargés — vérifiez votre connexion puis réessayez.
+                    </p>
+                    <Button
+                      onClick={() => fetchUserAndEvents()}
+                      className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-semibold"
+                    >
+                      Réessayer
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-xl font-semibold text-[#1E3A8A] mb-2">
+                      Aucun événement créé
+                    </h2>
+                    <p className="text-gray-500 text-center mb-6 max-w-md">
+                      Créez votre premier événement pour commencer à utiliser Eventvivo
+                    </p>
+                    <Link href="/fr/events/choose-plan">
+                      <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-semibold">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Créer un événement
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </CardContent>
             </Card>
           </motion.div>

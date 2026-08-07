@@ -151,7 +151,7 @@ export default function UpdatePasswordPage() {
   }
 
   return (
-    <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35} className="min-h-screen py-8">
+    <BackgroundImage src="/images/foule.webp" overlayOpacity={0.35} animate="zoom" className="min-h-screen py-8">
       <div className="flex-1 flex items-center justify-center px-4">
         <motion.div
           initial={{ opacity: 0, y: 30 }}

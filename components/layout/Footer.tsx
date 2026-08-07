@@ -41,17 +41,10 @@ export function Footer() {
           </div>
         </div>
         
-        <div className="border-t border-gray-200 mt-8 pt-4">
-          <p className="text-xs text-gray-400 text-center select-none">
-            Eventvivo est un service édité par l'Établissement{' '}
-            <strong className="font-medium text-gray-500">ALAYDE TECH</strong>, 
-            immatriculé au RCCM du Bénin sous le numéro{' '}
-            <strong className="font-medium text-gray-500">RB/PNO/26 A 126770</strong>.
-          </p>
-
-          <a href="mailto:contact@alaydetech.com" style={{ color: '#1E3A8A', textDecoration: 'underline' }}>
-            contact@alaydetech.com
-          </a>
+        <div className="border-t border-gray-200 mt-8 pt-4 text-center">
+          <Link href="/fr/mentions-legales" className="text-xs text-gray-400 hover:text-[#1E3A8A] underline">
+            Mentions légales
+          </Link>
         </div>
         
         <div className="border-t border-gray-200 mt-4 pt-4 flex flex-col sm:flex-row justify-between items-center gap-4">

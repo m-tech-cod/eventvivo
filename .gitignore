@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase (régénérable via: npx supabase gen types typescript --project-id tjwihrslleanfwphlpex --schema public > lib/database.types.ts)
+lib/database.types.ts
+supabase/.temp/
