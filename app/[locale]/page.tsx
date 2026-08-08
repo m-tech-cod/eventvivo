@@ -13,10 +13,17 @@ import { FAQSection } from '@/components/home/FAQSection'
 import { SocialProofBanner } from '@/components/home/SocialProofBanner'
 import { FinalCTA } from '@/components/home/FinalCTA'
 import { AnimatedSection } from '@/components/ui/animations'
+import type { Metadata } from 'next'
 
 // Contenu marketing statique — régénéré au plus toutes les heures plutôt que
 // recalculé à chaque requête (défaut) ou jamais mis en cache.
 export const revalidate = 3600
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: '/fr',
+  },
+}
 
 export default function HomePage() {
   return (

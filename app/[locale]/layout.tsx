@@ -45,9 +45,6 @@ export const metadata: Metadata = {
       'max-image-preview': 'large',
     },
   },
-  alternates: {
-    canonical: SITE_URL,
-  },
   openGraph: {
     type: 'website',
     locale: 'fr_FR',

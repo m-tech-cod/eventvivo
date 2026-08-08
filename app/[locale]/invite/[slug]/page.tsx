@@ -1,4 +1,5 @@
 import { cache } from 'react'
+import { notFound } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
 import { Metadata } from 'next'
 import Script from 'next/script'
@@ -99,16 +100,7 @@ export default async function InvitationPage({ params }: Params) {
   const event = await getEventBySlug(slug)
 
   if (!event) {
-    return (
-      <BackgroundImage src="/images/foule.webp" animate="zoom" overlayOpacity={0.35} priority>
-        <div className="flex-1 flex items-center justify-center px-4">
-          <div className="bg-white/95 backdrop-blur-sm p-8 rounded-xl text-center max-w-md">
-            <h1 className="text-2xl font-bold text-[#1E3A8A]">Invitation non trouvée</h1>
-            <p className="text-gray-600 mt-2">Cette invitation n'existe pas ou a été supprimée.</p>
-          </div>
-        </div>
-      </BackgroundImage>
-    )
+    notFound()
   }
 
   const eventSchema = {

@@ -77,7 +77,8 @@ export default function EventsPage() {
             <h1 className="text-2xl font-bold text-white font-poppins drop-shadow-lg">
               Mes événements
             </h1>
-            <Link href="/fr/events/choose-plan">
+            {/* Masqué en mobile : redondant avec le bouton flottant "+" de MobileNavigation */}
+            <Link href="/fr/events/choose-plan" className="hidden md:block">
               <Button className="bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#1E3A8A] font-semibold">
                 <Plus className="w-4 h-4 mr-2" />
                 Créer un événement

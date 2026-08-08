@@ -31,18 +31,20 @@ export function MobileNavigation() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 md:hidden z-50">
       <div className="flex justify-around items-center h-16">
-        {/* Dashboard - Protégé */}
-        <Link
-          href="/fr/dashboard"
-          onClick={(e) => handleProtectedClick(e, '/fr/dashboard')}
-          className={`flex flex-col items-center gap-1 text-xs ${
-            isActive('/fr/dashboard') ? 'text-[#1E3A8A]' : 'text-gray-500'
-          }`}
-        >
-          <LayoutDashboard size={20} />
-          <span>Dashboard</span>
-        </Link>
-        
+        {/* Dashboard - Protégé, masqué si déconnecté (évite qu'il soit indexé) */}
+        {user && (
+          <Link
+            href="/fr/dashboard"
+            onClick={(e) => handleProtectedClick(e, '/fr/dashboard')}
+            className={`flex flex-col items-center gap-1 text-xs ${
+              isActive('/fr/dashboard') ? 'text-[#1E3A8A]' : 'text-gray-500'
+            }`}
+          >
+            <LayoutDashboard size={20} />
+            <span>Dashboard</span>
+          </Link>
+        )}
+
         {/* Événements - Protégé */}
         <Link
           href="/fr/events"

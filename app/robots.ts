@@ -5,7 +5,14 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/api/', '/admin/', '/auth/', '/dashboard/', '/events/checkout', '/events/choose-plan'],
+      disallow: [
+        '/api/',
+        '/fr/admin/',
+        '/fr/auth/',
+        '/fr/dashboard/',
+        '/fr/events/checkout',
+        '/fr/events/choose-plan',
+      ],
     },
     sitemap: 'https://eventvivo.com/sitemap.xml',
   }

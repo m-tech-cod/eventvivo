@@ -26,9 +26,9 @@ export function Header() {
         
         <nav className="hidden md:flex items-center gap-6">
           <Link href="/" className="text-gray-600 hover:text-[#1E3A8A]">Accueil</Link>
-          <Link href="/fr/dashboard" className="text-gray-600 hover:text-[#1E3A8A]">Dashboard</Link>
+          {user && <Link href="/fr/dashboard" className="text-gray-600 hover:text-[#1E3A8A]">Dashboard</Link>}
           <Link href="/fr/pricing" className="text-gray-600 hover:text-[#1E3A8A]">Tarifs</Link>
-          
+
           {user ? (
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-600">
@@ -59,9 +59,9 @@ export function Header() {
         <div className="md:hidden bg-white border-b border-gray-200 p-4">
           <nav className="flex flex-col gap-4">
             <Link href="/" className="text-gray-600 hover:text-[#1E3A8A]">Accueil</Link>
-            <Link href="/fr/dashboard" className="text-gray-600 hover:text-[#1E3A8A]">Dashboard</Link>
+            {user && <Link href="/fr/dashboard" className="text-gray-600 hover:text-[#1E3A8A]">Dashboard</Link>}
             <Link href="/fr/pricing" className="text-gray-600 hover:text-[#1E3A8A]">Tarifs</Link>
-            
+
             {user ? (
               <button
                 onClick={() => signOut()}
