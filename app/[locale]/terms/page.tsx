@@ -21,7 +21,7 @@ export default function TermsPage() {
             <h1 className="text-4xl font-bold text-white font-poppins drop-shadow-lg">
               Conditions Générales d'Utilisation
             </h1>
-            <p className="text-white/60 text-sm drop-shadow mt-2">Dernière mise à jour : Juillet 2026</p>
+            <p className="text-white/60 text-sm drop-shadow mt-2">Dernière mise à jour : 8 août 2026</p>
           </motion.div>
 
           {/* Sections */}
@@ -33,9 +33,10 @@ export default function TermsPage() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600 text-sm">
-                    Eventvivo est une plateforme SaaS de gestion d'événements éditée par <strong>ALAYDE TECH</strong>, 
-                    immatriculée au RCCM du Bénin sous le numéro RB/PNO/26 A 126770. 
-                    Les présentes conditions régissent l'utilisation de la plateforme Eventvivo.
+                    Eventvivo est une plateforme SaaS de gestion d'événements éditée par <strong>ALAYDE TECH</strong>.
+                    Les présentes conditions générales d'utilisation (CGU) régissent l'utilisation de la plateforme Eventvivo.
+                    Les informations d'identification de l'éditeur figurent dans les{' '}
+                    <Link href="/fr/mentions-legales" className="text-[#1E3A8A] hover:underline">Mentions légales</Link>.
                   </p>
                 </CardContent>
               </Card>
@@ -96,10 +97,10 @@ export default function TermsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4 text-sm text-gray-600">
-                    
+
                     <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                       <h4 className="font-bold text-[#1E3A8A]">Gratuit</h4>
-                      <p className="text-xs text-gray-500">0 FCFA / 0 €</p>
+                      <p className="text-xs text-gray-500">0 FCFA / 0 € / 0 $</p>
                       <ul className="mt-2 space-y-1 list-disc pl-4">
                         <li>10 invités maximum</li>
                         <li>1 style d'invitation</li>
@@ -110,7 +111,7 @@ export default function TermsPage() {
 
                     <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                       <h4 className="font-bold text-[#1E3A8A]">Standard</h4>
-                      <p className="text-xs text-gray-500">2 000 FCFA / 4,99 €</p>
+                      <p className="text-xs text-gray-500">2 000 FCFA / 9,99 € / 9,99 $</p>
                       <ul className="mt-2 space-y-1 list-disc pl-4">
                         <li>100 invités maximum</li>
                         <li>5 styles d'invitation</li>
@@ -121,7 +122,7 @@ export default function TermsPage() {
 
                     <div className="p-4 bg-[#F59E0B]/10 rounded-lg border border-[#F59E0B]">
                       <h4 className="font-bold text-[#1E3A8A]">Prestige</h4>
-                      <p className="text-xs text-gray-500">5 000 FCFA / 9,99 €</p>
+                      <p className="text-xs text-gray-500">5 000 FCFA / 19,99 € / 19,99 $</p>
                       <ul className="mt-2 space-y-1 list-disc pl-4">
                         <li>500 invités maximum</li>
                         <li>50 styles d'invitation premium</li>
@@ -132,7 +133,7 @@ export default function TermsPage() {
 
                     <div className="p-4 bg-[#10B981]/10 rounded-lg border border-[#10B981]">
                       <h4 className="font-bold text-[#1E3A8A]">VIP / Illimité</h4>
-                      <p className="text-xs text-gray-500">10 000 FCFA / 16,99 €</p>
+                      <p className="text-xs text-gray-500">10 000 FCFA / 39,99 € / 39,99 $</p>
                       <ul className="mt-2 space-y-1 list-disc pl-4">
                         <li>Invités illimités</li>
                         <li>50 styles d'invitation premium</li>
@@ -144,7 +145,9 @@ export default function TermsPage() {
                     </div>
 
                     <p className="mt-4 text-xs text-gray-500">
-                      Les paiements sont traités par <strong>FedaPay</strong> (Mobile Money, carte bancaire, Visa, Mastercard). 
+                      Les tarifs à jour sont affichés sur la page{' '}
+                      <Link href="/fr/pricing" className="text-[#1E3A8A] hover:underline">Tarifs</Link>, qui fait foi en cas de différence.
+                      Les paiements sont traités par <strong>FedaPay</strong> (Mobile Money, carte bancaire, Visa, Mastercard).
                       Les transactions sont sécurisées et cryptées.
                     </p>
                   </div>
@@ -155,12 +158,14 @@ export default function TermsPage() {
             <motion.div variants={staggerItem}>
               <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-lg">
                 <CardHeader>
-                  <CardTitle className="text-[#1E3A8A]">6. Propriété intellectuelle</CardTitle>
+                  <CardTitle className="text-[#1E3A8A]">6. Propriété intellectuelle et données personnelles</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600 text-sm">
-                    Eventvivo, son logo, son code source, son interface et son contenu sont la propriété exclusive de <strong>ALAYDE TECH</strong>. 
-                    Toute reproduction, modification ou utilisation sans autorisation est interdite.
+                    Les droits de propriété intellectuelle sur Eventvivo (logo, code source, interface, contenu) sont détaillés dans les{' '}
+                    <Link href="/fr/mentions-legales" className="text-[#1E3A8A] hover:underline">Mentions légales</Link>.
+                    Les modalités de collecte, d'utilisation et de protection de vos données personnelles sont détaillées dans la{' '}
+                    <Link href="/fr/privacy" className="text-[#1E3A8A] hover:underline">Politique de Confidentialité</Link>.
                   </p>
                 </CardContent>
               </Card>
@@ -169,22 +174,7 @@ export default function TermsPage() {
             <motion.div variants={staggerItem}>
               <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-lg">
                 <CardHeader>
-                  <CardTitle className="text-[#1E3A8A]">7. Protection des données</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-gray-600 text-sm">
-                    Eventvivo collecte les données nécessaires au fonctionnement du service (nom, email, informations d'événements). 
-                    Ces données sont hébergées sur <strong>Supabase</strong> et ne sont pas vendues à des tiers. 
-                    L'utilisateur peut demander la suppression de ses données à tout moment.
-                  </p>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <motion.div variants={staggerItem}>
-              <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-lg">
-                <CardHeader>
-                  <CardTitle className="text-[#1E3A8A]">8. Responsabilité</CardTitle>
+                  <CardTitle className="text-[#1E3A8A]">7. Responsabilité</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600 text-sm">
@@ -198,12 +188,27 @@ export default function TermsPage() {
             <motion.div variants={staggerItem}>
               <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-lg">
                 <CardHeader>
-                  <CardTitle className="text-[#1E3A8A]">9. Modification des conditions</CardTitle>
+                  <CardTitle className="text-[#1E3A8A]">8. Modification des conditions</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600 text-sm">
-                    Eventvivo se réserve le droit de modifier les présentes conditions à tout moment. 
+                    Eventvivo se réserve le droit de modifier les présentes conditions à tout moment.
                     Les utilisateurs seront informés des modifications par email ou via la plateforme.
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div variants={staggerItem}>
+              <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="text-[#1E3A8A]">9. Droit applicable et litiges</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 text-sm">
+                    Les présentes CGU sont régies par le droit béninois. En cas de litige, une solution amiable sera recherchée en priorité via notre service{' '}
+                    <Link href="/fr/contact" className="text-[#1E3A8A] hover:underline">Contact</Link>{' '}
+                    avant toute action judiciaire.
                   </p>
                 </CardContent>
               </Card>

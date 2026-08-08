@@ -21,7 +21,7 @@ export default function MentionsLegalesPage() {
             <h1 className="text-4xl font-bold text-white font-poppins drop-shadow-lg">
               Mentions légales
             </h1>
-            <p className="text-white/60 text-sm drop-shadow mt-2">Dernière mise à jour : Août 2026</p>
+            <p className="text-white/60 text-sm drop-shadow mt-2">Dernière mise à jour : 8 août 2026</p>
           </motion.div>
 
           {/* Sections */}
@@ -74,6 +74,23 @@ export default function MentionsLegalesPage() {
             <motion.div variants={staggerItem}>
               <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-lg">
                 <CardHeader>
+                  <CardTitle className="text-[#1E3A8A]">Droit applicable</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 text-sm">
+                    Les présentes mentions légales sont soumises au droit béninois.
+                    Les règles d'utilisation du service (création de compte, forfaits, paiements) sont détaillées dans les{' '}
+                    <Link href="/fr/terms" className="text-[#1E3A8A] hover:underline">Conditions Générales d'Utilisation</Link>,
+                    et le traitement de vos données personnelles dans la{' '}
+                    <Link href="/fr/privacy" className="text-[#1E3A8A] hover:underline">Politique de Confidentialité</Link>.
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div variants={staggerItem}>
+              <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-lg">
+                <CardHeader>
                   <CardTitle className="text-[#1E3A8A]">Contact</CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -82,10 +99,6 @@ export default function MentionsLegalesPage() {
                     <Link href="/fr/contact" className="text-[#1E3A8A] hover:underline ml-1">
                       Nous contacter
                     </Link>
-                  </p>
-                  <p className="text-gray-600 text-sm mt-2">
-                    Voir aussi les <Link href="/fr/terms" className="text-[#1E3A8A] hover:underline">Conditions Générales d'Utilisation</Link>
-                    {' '}et la <Link href="/fr/privacy" className="text-[#1E3A8A] hover:underline">Politique de Confidentialité</Link>.
                   </p>
                 </CardContent>
               </Card>

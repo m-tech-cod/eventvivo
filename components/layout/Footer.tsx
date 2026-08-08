@@ -35,19 +35,14 @@ export function Footer() {
           <div>
             <h4 className="font-semibold text-[#1E3A8A] mb-3">Légal</h4>
             <ul className="space-y-2 text-sm text-gray-600">
+              <li><Link href="/fr/mentions-legales" className="hover:text-[#1E3A8A]">Mentions légales</Link></li>
               <li><Link href="/fr/terms" className="hover:text-[#1E3A8A]">Conditions</Link></li>
-              <li><Link href="/fr/privacy" className="hover:text-[#1E3A8A]">Confidentialité</Link></li>
+              <li><Link href="/fr/privacy" className="hover:text-[#1E3A8A]">Politique de Confidentialité</Link></li>
             </ul>
           </div>
         </div>
-        
-        <div className="border-t border-gray-200 mt-8 pt-4 text-center">
-          <Link href="/fr/mentions-legales" className="text-xs text-gray-400 hover:text-[#1E3A8A] underline">
-            Mentions légales
-          </Link>
-        </div>
-        
-        <div className="border-t border-gray-200 mt-4 pt-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+
+        <div className="border-t border-gray-200 mt-8 pt-4 flex flex-col sm:flex-row justify-between items-center gap-4">
           <p className="text-xs text-gray-400">
             © 2026 Eventvivo. Conçu et développé par{' '}
             <a

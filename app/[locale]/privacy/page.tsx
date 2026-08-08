@@ -21,11 +21,25 @@ export default function PrivacyPage() {
             <h1 className="text-4xl font-bold text-white font-poppins drop-shadow-lg">
               Politique de Confidentialité
             </h1>
-            <p className="text-white/60 text-sm drop-shadow mt-2">Dernière mise à jour : Juillet 2025</p>
+            <p className="text-white/60 text-sm drop-shadow mt-2">Dernière mise à jour : 8 août 2026</p>
           </motion.div>
 
           {/* Sections */}
           <StaggeredContainer className="space-y-4">
+            <motion.div variants={staggerItem}>
+              <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="text-[#1E3A8A]">Responsable du traitement</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-600 text-sm">
+                    Le responsable du traitement des données est <strong>ALAYDE TECH</strong>, éditeur d'Eventvivo
+                    (voir <Link href="/fr/mentions-legales" className="text-[#1E3A8A] hover:underline">Mentions légales</Link> pour les informations d'identification complètes).
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
             <motion.div variants={staggerItem}>
               <Card className="bg-white/95 backdrop-blur-sm border-0 shadow-lg">
                 <CardHeader>
